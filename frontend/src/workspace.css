@@ -1,0 +1,51 @@
+/* Keep the active report and conversation together; rails are secondary context. */
+.workspace-heading{align-items:center;margin-bottom:24px}
+.workspace-grid{grid-template-columns:240px minmax(0,1fr) 240px;gap:24px}
+.workspace-main,.workspace-rail{gap:20px}
+.workspace-main{display:flex;flex-direction:column}
+.workspace-main>*,.workspace-rail>*{min-width:0}
+.side-card,.overview-card{padding:20px}
+.side-card-heading{gap:12px;margin-bottom:16px}
+.side-card-heading h2{margin-top:4px}
+.eyebrow{text-transform:none;letter-spacing:0;font-weight:500}
+.workspace-heading .location{margin-bottom:10px}
+.overview-card-top{align-items:flex-start;gap:16px;margin-bottom:18px}
+.overview-card-top h2{margin-top:6px}
+.workspace-empty{padding:20px;gap:16px}
+.workspace-empty strong{display:block;font-weight:600}
+.workspace-empty p{margin-top:6px}
+.main-card-grid{gap:16px}
+.info-card{padding:20px;gap:12px;position:relative}
+.info-card>div:nth-child(2){flex:1;min-width:0;padding-right:8px}
+.info-card h3{margin:6px 0 8px}
+.info-card p{line-height:1.75}
+.card-arrow{flex-shrink:0;align-self:flex-start}
+.metric-list{gap:14px}
+.metric-list>div,.health-row{align-items:flex-start;gap:12px}
+.metric-list strong,.health-row strong{flex-shrink:0;text-align:right}
+.health-row{padding-block:12px}
+.health-row>span{display:flex;align-items:center;gap:6px}
+.side-link{min-height:36px;margin-top:16px;padding-block:6px}
+.quick-card{padding-bottom:14px}
+.quick-card>button{padding-block:14px;gap:10px;line-height:1.6}
+.needs-card label{padding-block:12px;gap:10px;align-items:flex-start}
+.needs-card .check{margin-top:3px;flex-shrink:0}
+.batch-progress{margin-top:20px}.progress-labels{gap:4px}
+.progress-labels span{white-space:nowrap;font-size:11px}
+.workspace-main .chat-panel{margin:0;padding:22px;box-shadow:none;border-color:#b9d2cc}
+.chat-panel-header{align-items:center;gap:20px;margin-bottom:20px}
+.chat-panel-header h2{margin-top:6px}
+.chat-status{flex-shrink:0;line-height:1.7;max-width:45%}
+.chat-history{max-height:360px;margin-bottom:16px}
+.chat-message{padding:16px 18px}
+.chat-composer{padding:12px;gap:12px;align-items:flex-end}
+.chat-composer textarea{min-height:76px;padding:4px 2px;line-height:1.7}
+.chat-composer .icon-button{width:40px;height:40px;flex-shrink:0}
+.chat-send{min-height:40px;padding:10px 16px;flex-shrink:0}
+.chat-footer{gap:16px;line-height:1.7;padding-top:12px;flex-wrap:wrap}
+.chat-empty{padding:0 0 18px;font-size:14px;color:var(--muted);line-height:1.8}
+.page-laporan .next-link{margin-top:24px}
+@media(max-width:1200px){.workspace-grid{grid-template-columns:210px minmax(0,1fr) 210px;gap:20px}.info-card{padding:16px}.main-card-grid{grid-template-columns:1fr}}
+@media(max-width:1000px){.workspace-grid{grid-template-columns:minmax(0,1fr) 240px}.workspace-main{grid-column:1;grid-row:1/span 2}.left-rail{grid-column:2;grid-row:1}.right-rail{grid-column:2;grid-row:2}.main-card-grid{grid-template-columns:1fr}}
+@media(max-width:760px){.workspace-grid{display:flex;flex-direction:column;gap:20px}.workspace-main{width:100%;order:0}.left-rail,.right-rail{width:100%;order:1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.left-rail .quick-card,.right-rail .bulletin-card{grid-column:1/-1}.workspace-heading{align-items:flex-start}.workspace-main .chat-panel{padding:20px}.main-card-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:480px){.workspace-heading{display:block}.workspace-heading-actions{margin-top:18px}.main-card-grid{grid-template-columns:1fr}.left-rail,.right-rail{grid-template-columns:1fr}.side-card,.overview-card,.info-card{padding:20px}.workspace-main .chat-panel{padding:18px}.chat-panel-header{gap:12px;flex-wrap:wrap}.chat-status{max-width:100%}.chat-composer{flex-wrap:wrap;gap:8px}.chat-composer textarea{order:-1;flex-basis:100%;min-height:84px}.chat-send{margin-left:auto}.chat-footer{display:flex;gap:6px}.chat-footer span{margin:0;flex-basis:100%}.chat-message{padding:14px}.overview-card-top{flex-wrap:wrap}.health-row strong{max-width:55%}}

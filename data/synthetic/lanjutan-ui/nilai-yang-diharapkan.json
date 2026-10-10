@@ -1,0 +1,405 @@
+{
+  "synthetic": true,
+  "generated_at": "2026-10-10T01:32:24.725677+07:00",
+  "shelters": 6,
+  "total_people": 552,
+  "stock_condition": "Gap dihitung dari stok dengan unit dan metadata waktu/periode yang valid; semua nilai hanya untuk demonstrasi.",
+  "records": [
+    {
+      "report_id": "R001",
+      "shelter_name": "Posko Cibening",
+      "village": "Cibening",
+      "shelter_type": "terkonsentrasi",
+      "total_people": 91,
+      "total_families": 18,
+      "male": 46,
+      "female": 45,
+      "infants_toddlers": 6,
+      "children": 18,
+      "elderly": 7,
+      "pregnant": 2,
+      "breastfeeding": 4,
+      "disability": 0,
+      "is_estimate": false,
+      "urgent_needs": [
+        "air bersih",
+        "beras",
+        "minyak goreng"
+      ],
+      "surplus_do_not_send": [],
+      "notes": "Data sintetis untuk demonstrasi SIGAP.",
+      "stock": {
+        "air_liter_per_hari": 600,
+        "kkal_per_hari": 120000,
+        "jamban_unit": 3,
+        "ruang_hunian_m2": 300
+      },
+      "stock_context": {
+        "air_liter_per_hari": {
+          "unit": "L",
+          "recorded_at": "2026-10-10 01:26",
+          "horizon_hours": 24
+        },
+        "kkal_per_hari": {
+          "unit": "kkal",
+          "recorded_at": "2026-10-10 01:26",
+          "horizon_hours": 24
+        },
+        "jamban_unit": {
+          "unit": "unit",
+          "recorded_at": "2026-10-10 01:26"
+        },
+        "ruang_hunian_m2": {
+          "unit": "m2",
+          "recorded_at": "2026-10-10 01:26"
+        }
+      }
+    },
+    {
+      "report_id": "R002",
+      "shelter_name": "Posko Harapan",
+      "village": "Sukamaju",
+      "shelter_type": "terkonsentrasi",
+      "total_people": 98,
+      "total_families": 22,
+      "male": 43,
+      "female": 55,
+      "infants_toddlers": 8,
+      "children": 21,
+      "elderly": 16,
+      "pregnant": 3,
+      "breastfeeding": 5,
+      "disability": 2,
+      "is_estimate": false,
+      "urgent_needs": [
+        "air bersih",
+        "popok",
+        "obat-obatan"
+      ],
+      "surplus_do_not_send": [],
+      "notes": "Data sintetis untuk demonstrasi SIGAP.",
+      "stock": {
+        "air_liter_per_hari": 1000,
+        "kkal_per_hari": 150000,
+        "jamban_unit": 3,
+        "ruang_hunian_m2": 280
+      },
+      "stock_context": {
+        "air_liter_per_hari": {
+          "unit": "L",
+          "recorded_at": "2026-10-10 01:27",
+          "horizon_hours": 24
+        },
+        "kkal_per_hari": {
+          "unit": "kkal",
+          "recorded_at": "2026-10-10 01:27",
+          "horizon_hours": 24
+        },
+        "jamban_unit": {
+          "unit": "unit",
+          "recorded_at": "2026-10-10 01:27"
+        },
+        "ruang_hunian_m2": {
+          "unit": "m2",
+          "recorded_at": "2026-10-10 01:27"
+        }
+      }
+    },
+    {
+      "report_id": "R003",
+      "shelter_name": "Posko Bening",
+      "village": "Cipandan",
+      "shelter_type": "terkonsentrasi",
+      "total_people": 100,
+      "total_families": 25,
+      "male": 51,
+      "female": 49,
+      "infants_toddlers": 7,
+      "children": 20,
+      "elderly": 9,
+      "pregnant": 1,
+      "breastfeeding": 3,
+      "disability": 0,
+      "is_estimate": false,
+      "urgent_needs": [
+        "air bersih",
+        "makanan siap saji"
+      ],
+      "surplus_do_not_send": [],
+      "notes": "Data sintetis untuk demonstrasi SIGAP.",
+      "stock": {
+        "air_liter_per_hari": 0,
+        "kkal_per_hari": 100000,
+        "jamban_unit": 2,
+        "ruang_hunian_m2": 250
+      },
+      "stock_context": {
+        "air_liter_per_hari": {
+          "unit": "L",
+          "recorded_at": "2026-10-10 01:28",
+          "horizon_hours": 24
+        },
+        "kkal_per_hari": {
+          "unit": "kkal",
+          "recorded_at": "2026-10-10 01:28",
+          "horizon_hours": 24
+        },
+        "jamban_unit": {
+          "unit": "unit",
+          "recorded_at": "2026-10-10 01:28"
+        },
+        "ruang_hunian_m2": {
+          "unit": "m2",
+          "recorded_at": "2026-10-10 01:28"
+        }
+      }
+    },
+    {
+      "report_id": "R004",
+      "shelter_name": "Posko Teduh",
+      "village": "Mekarsari",
+      "shelter_type": "terkonsentrasi",
+      "total_people": 80,
+      "total_families": 20,
+      "male": 38,
+      "female": 42,
+      "infants_toddlers": 5,
+      "children": 15,
+      "elderly": 5,
+      "pregnant": 0,
+      "breastfeeding": 2,
+      "disability": 0,
+      "is_estimate": false,
+      "urgent_needs": [
+        "perlengkapan kebersihan"
+      ],
+      "surplus_do_not_send": [
+        "air bersih",
+        "pangan"
+      ],
+      "notes": "Data sintetis untuk demonstrasi SIGAP.",
+      "stock": {
+        "air_liter_per_hari": 1500,
+        "kkal_per_hari": 180000,
+        "jamban_unit": 4,
+        "ruang_hunian_m2": 300
+      },
+      "stock_context": {
+        "air_liter_per_hari": {
+          "unit": "L",
+          "recorded_at": "2026-10-10 01:29",
+          "horizon_hours": 24
+        },
+        "kkal_per_hari": {
+          "unit": "kkal",
+          "recorded_at": "2026-10-10 01:29",
+          "horizon_hours": 24
+        },
+        "jamban_unit": {
+          "unit": "unit",
+          "recorded_at": "2026-10-10 01:29"
+        },
+        "ruang_hunian_m2": {
+          "unit": "m2",
+          "recorded_at": "2026-10-10 01:29"
+        }
+      }
+    },
+    {
+      "report_id": "R005",
+      "shelter_name": "Posko Melati",
+      "village": "Cisarua",
+      "shelter_type": "terkonsentrasi",
+      "total_people": 63,
+      "total_families": 15,
+      "male": 30,
+      "female": 33,
+      "infants_toddlers": 4,
+      "children": 13,
+      "elderly": 6,
+      "pregnant": 1,
+      "breastfeeding": 2,
+      "disability": 1,
+      "is_estimate": false,
+      "urgent_needs": [
+        "selimut",
+        "makanan bayi"
+      ],
+      "surplus_do_not_send": [],
+      "notes": "Data sintetis untuk demonstrasi SIGAP.",
+      "stock": {
+        "air_liter_per_hari": 400,
+        "kkal_per_hari": 60000,
+        "jamban_unit": 2,
+        "ruang_hunian_m2": 150
+      },
+      "stock_context": {
+        "air_liter_per_hari": {
+          "unit": "L",
+          "recorded_at": "2026-10-10 01:30",
+          "horizon_hours": 24
+        },
+        "kkal_per_hari": {
+          "unit": "kkal",
+          "recorded_at": "2026-10-10 01:30",
+          "horizon_hours": 24
+        },
+        "jamban_unit": {
+          "unit": "unit",
+          "recorded_at": "2026-10-10 01:30"
+        },
+        "ruang_hunian_m2": {
+          "unit": "m2",
+          "recorded_at": "2026-10-10 01:30"
+        }
+      }
+    },
+    {
+      "report_id": "R006",
+      "shelter_name": "Posko Nusa",
+      "village": "Sukamaju",
+      "shelter_type": "terkonsentrasi",
+      "total_people": 120,
+      "total_families": 28,
+      "male": 59,
+      "female": 61,
+      "infants_toddlers": 9,
+      "children": 25,
+      "elderly": 8,
+      "pregnant": 2,
+      "breastfeeding": 4,
+      "disability": 1,
+      "is_estimate": false,
+      "urgent_needs": [
+        "air bersih",
+        "obat-obatan"
+      ],
+      "surplus_do_not_send": [],
+      "notes": "Data sintetis untuk demonstrasi SIGAP.",
+      "stock": {
+        "air_liter_per_hari": 1200,
+        "kkal_per_hari": 160000,
+        "jamban_unit": 4,
+        "ruang_hunian_m2": 350
+      },
+      "stock_context": {
+        "air_liter_per_hari": {
+          "unit": "L",
+          "recorded_at": "2026-10-10 01:31",
+          "horizon_hours": 24
+        },
+        "kkal_per_hari": {
+          "unit": "kkal",
+          "recorded_at": "2026-10-10 01:31",
+          "horizon_hours": 24
+        },
+        "jamban_unit": {
+          "unit": "unit",
+          "recorded_at": "2026-10-10 01:31"
+        },
+        "ruang_hunian_m2": {
+          "unit": "m2",
+          "recorded_at": "2026-10-10 01:31"
+        }
+      }
+    }
+  ],
+  "expected": [
+    {
+      "posko": "Posko Cibening",
+      "people": 91,
+      "needs": {
+        "air_liter_per_hari": 1365,
+        "kkal_per_hari": 191100,
+        "jamban_unit": 5,
+        "ruang_hunian_m2": 318.5
+      },
+      "gaps": {
+        "air_liter_per_hari": 765,
+        "kkal_per_hari": 71100,
+        "jamban_unit": 2,
+        "ruang_hunian_m2": 18.5
+      }
+    },
+    {
+      "posko": "Posko Harapan",
+      "people": 98,
+      "needs": {
+        "air_liter_per_hari": 1470,
+        "kkal_per_hari": 205800,
+        "jamban_unit": 5,
+        "ruang_hunian_m2": 343.0
+      },
+      "gaps": {
+        "air_liter_per_hari": 470,
+        "kkal_per_hari": 55800,
+        "jamban_unit": 2,
+        "ruang_hunian_m2": 63.0
+      }
+    },
+    {
+      "posko": "Posko Bening",
+      "people": 100,
+      "needs": {
+        "air_liter_per_hari": 1500,
+        "kkal_per_hari": 210000,
+        "jamban_unit": 5,
+        "ruang_hunian_m2": 350.0
+      },
+      "gaps": {
+        "air_liter_per_hari": 1500,
+        "kkal_per_hari": 110000,
+        "jamban_unit": 3,
+        "ruang_hunian_m2": 100.0
+      }
+    },
+    {
+      "posko": "Posko Teduh",
+      "people": 80,
+      "needs": {
+        "air_liter_per_hari": 1200,
+        "kkal_per_hari": 168000,
+        "jamban_unit": 4,
+        "ruang_hunian_m2": 280.0
+      },
+      "gaps": {
+        "air_liter_per_hari": 0,
+        "kkal_per_hari": 0,
+        "jamban_unit": 0,
+        "ruang_hunian_m2": 0
+      }
+    },
+    {
+      "posko": "Posko Melati",
+      "people": 63,
+      "needs": {
+        "air_liter_per_hari": 945,
+        "kkal_per_hari": 132300,
+        "jamban_unit": 4,
+        "ruang_hunian_m2": 220.5
+      },
+      "gaps": {
+        "air_liter_per_hari": 545,
+        "kkal_per_hari": 72300,
+        "jamban_unit": 2,
+        "ruang_hunian_m2": 70.5
+      }
+    },
+    {
+      "posko": "Posko Nusa",
+      "people": 120,
+      "needs": {
+        "air_liter_per_hari": 1800,
+        "kkal_per_hari": 252000,
+        "jamban_unit": 6,
+        "ruang_hunian_m2": 420.0
+      },
+      "gaps": {
+        "air_liter_per_hari": 600,
+        "kkal_per_hari": 92000,
+        "jamban_unit": 2,
+        "ruang_hunian_m2": 70.0
+      }
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "name": "sigap-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/server.ts",
+    "start": "tsx src/server.ts",
+    "build": "tsc --noEmit",
+    "test": "tsx --test tests/**/*.test.ts",
+    "spike:acp": "tsx scripts/acp-feasibility.ts",
+    "probe:mcp": "tsx scripts/mcp-readonly-probe.ts",
+    "smoke:gemini": "tsx scripts/gemini-preview-smoke.ts"
+  },
+  "dependencies": {
+    "@google/genai": "^2.28.0",
+    "fastify": "^5.2.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.0"
+  }
+}

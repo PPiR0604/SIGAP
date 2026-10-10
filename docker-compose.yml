@@ -1,0 +1,56 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sigap-backend
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - NODE_ENV=production
+      - SIGAP_DOCKER=1
+      - SIGAP_HOST=0.0.0.0
+      - SIGAP_PORT=8787
+      - SIGAP_AGENT_PROVIDER=${SIGAP_AGENT_PROVIDER:-gemini}
+      - GEMINI_API_KEY
+      - GEMINI_MODEL
+      - LANGFLOW_MCP_URL
+      - LANGFLOW_API_KEY
+      - SIGAP_DB_PATH=data/sigap.db
+      - SIGAP_SESSION_TOKEN
+      - SIGAP_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:80,http://127.0.0.1:80,http://localhost,http://127.0.0.1,http://backend:8787
+    volumes:
+      - ./backend/data:/app/data
+      - ./mcp:/app/mcp:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8787:8787"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+    networks:
+      - sigap-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: sigap-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - sigap-network
+
+networks:
+  sigap-network:
+    driver: bridge

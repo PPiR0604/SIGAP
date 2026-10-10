@@ -1,0 +1,9 @@
+DATA SINTETIS — salin satu pesan tiap giliran, setelah enam koreksi ditinjau dan disimpan lewat UI.
+
+1. Ambil ulang seluruh rekap tersimpan. Tampilkan jumlah posko, total jiwa, semua kebutuhan yang dilaporkan, serta waktu sumber. Jangan menggabungkan desa yang belum diketahui secara sembarang.
+
+2. Dari snapshot seluruh rekap tersimpan yang baru dibaca, hitung kebutuhan dan kekurangan air, pangan dalam kkal, jamban, serta ruang hunian. Tampilkan per posko. Jelaskan jika stok sudah kedaluwarsa atau belum dapat dibandingkan.
+
+3. Periksa laporan ganda dan posko yang belum melapor dari seluruh rekap tersimpan. Jangan menjumlahkan riwayat pembaruan menjadi pengungsi baru.
+
+4. Tolong susun draf buletin donatur dari seluruh rekap tersimpan yang ada saat ini. Cantumkan semua kebutuhan tiap posko dan barang yang sudah cukup. Tuliskan DATA SINTETIS — DEMONSTRASI pada draf. Hanya pratinjau (action preview), jangan membuat dokumen, mengirim pesan, atau mempublikasikan.

@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "langflow": {
+      "type": "streamable-http",
+      "url": "http://localhost:7860/api/v1/mcp/project/209f7bc8-7ef5-4403-ab01-8cfa5a40e624/streamable",
+      "headers": {
+        "x-api-key": "sk-7_jaS73buIKKqU8e63AHtHWt1wJ_AFugwVYui1mMMgc"
+      },
+      "alwaysAllow": [
+        "sigap_5_upsert_shelter",
+        "sigap_6_draft_bulletin",
+        "sigap_4_flag_anomalies",
+        "sigap_3_calculate_gap",
+        "sigap_1_prepare_needs",
+        "sigap_2_validate_needs",
+        "sigap_0_fetch_shelters"
+      ],
+      "disabled": false,
+      "timeout": 120000
+    }
+  }
+}

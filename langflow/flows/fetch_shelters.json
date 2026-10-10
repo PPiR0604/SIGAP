@@ -1,0 +1,926 @@
+{
+  "name": "SIGAP - 0 Fetch Shelters",
+  "description": "Mengambil data posko yang sudah tersimpan di Google Sheets rekap atau file CSV lokal. Input: teks JSON {action:all} untuk semua, atau {action:filter,term:nama/desa}. Verifikasi write menambahkan expected_snapshot_id/expected_snapshot_sha256 dari receipt efektif. Dipanggil di awal sesi baru untuk mengecek posko yang aktif atau kondisi terkini sebelum memproses laporan baru. Output SIGAP_READ_RESULT: sumber, total/matched_shelters, verification_status (verified/mismatch/not_requested), data dan referensi read-back. No_matches bukan sheet kosong; jumlah baris saja bukan bukti clear diterapkan. JANGAN dipanggil untuk menyimpan, memperbarui, atau menghapus data posko.",
+  "data": {
+    "nodes": [
+      {
+        "id": "ChatInput-2ZT7h",
+        "type": "genericNode",
+        "position": {
+          "x": 0,
+          "y": 200
+        },
+        "data": {
+          "id": "ChatInput-2ZT7h",
+          "type": "ChatInput",
+          "node": {
+            "base_classes": [
+              "Message"
+            ],
+            "beta": false,
+            "conditional_paths": [],
+            "custom_fields": {},
+            "description": "Get chat inputs from the Playground.",
+            "display_name": "Chat Input",
+            "documentation": "https://docs.langflow.org/chat-input-and-output",
+            "edited": false,
+            "field_order": [
+              "input_value",
+              "should_store_message",
+              "sender",
+              "sender_name",
+              "session_id",
+              "context_id",
+              "files"
+            ],
+            "frozen": false,
+            "icon": "MessagesSquare",
+            "legacy": false,
+            "metadata": {
+              "code_hash": "45974e6b1909",
+              "dependencies": {
+                "dependencies": [
+                  {
+                    "name": "lfx",
+                    "version": null
+                  }
+                ],
+                "total_dependencies": 1
+              },
+              "module": "lfx.components.input_output.chat.ChatInput"
+            },
+            "minimized": true,
+            "output_types": [],
+            "outputs": [
+              {
+                "allows_loop": false,
+                "cache": true,
+                "display_name": "Chat Message",
+                "group_outputs": false,
+                "method": "message_response",
+                "name": "message",
+                "selected": "Message",
+                "tool_mode": true,
+                "types": [
+                  "Message"
+                ],
+                "value": "__UNDEFINED__"
+              }
+            ],
+            "pinned": false,
+            "template": {
+              "_type": "Component",
+              "code": {
+                "advanced": true,
+                "api_editable": false,
+                "dynamic": true,
+                "fileTypes": [],
+                "file_path": "",
+                "info": "",
+                "list": false,
+                "load_from_db": false,
+                "multiline": true,
+                "name": "code",
+                "password": false,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "type": "code",
+                "value": "from lfx.base.data.utils import IMG_FILE_TYPES, TEXT_FILE_TYPES\nfrom lfx.base.io.chat import ChatComponent\nfrom lfx.inputs.inputs import BoolInput\nfrom lfx.io import (\n    DropdownInput,\n    FileInput,\n    MessageTextInput,\n    MultilineInput,\n    Output,\n)\nfrom lfx.schema.image import get_file_paths\nfrom lfx.schema.message import Message\nfrom lfx.services.deps import get_settings_service\nfrom lfx.utils.constants import (\n    MESSAGE_SENDER_AI,\n    MESSAGE_SENDER_NAME_USER,\n    MESSAGE_SENDER_USER,\n)\nfrom lfx.utils.file_path_security import (\n    component_file_access_scopes,\n    enforce_local_file_access,\n    is_local_file_access_restricted,\n)\n\n\nclass ChatInput(ChatComponent):\n    display_name = \"Chat Input\"\n    description = \"Get chat inputs from the Playground.\"\n    documentation: str = \"https://docs.langflow.org/chat-input-and-output\"\n    icon = \"MessagesSquare\"\n    name = \"ChatInput\"\n    minimized = True\n\n    inputs = [\n        MultilineInput(\n            name=\"input_value\",\n            display_name=\"Input Text\",\n            value=\"\",\n            info=\"Message to be passed as input.\",\n            input_types=[],\n        ),\n        BoolInput(\n            name=\"should_store_message\",\n            display_name=\"Store Messages\",\n            info=\"Store the message in the history.\",\n            value=True,\n            advanced=True,\n        ),\n        DropdownInput(\n            name=\"sender\",\n            display_name=\"Sender Type\",\n            options=[MESSAGE_SENDER_AI, MESSAGE_SENDER_USER],\n            value=MESSAGE_SENDER_USER,\n            info=\"Type of sender.\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"sender_name\",\n            display_name=\"Sender Name\",\n            info=\"Name of the sender.\",\n            value=MESSAGE_SENDER_NAME_USER,\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"session_id\",\n            display_name=\"Session ID\",\n            info=\"The session ID of the chat. If empty, the current session ID parameter will be used.\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"context_id\",\n            display_name=\"Context ID\",\n            info=\"The context ID of the chat. Adds an extra layer to the local memory.\",\n            value=\"\",\n            advanced=True,\n        ),\n        FileInput(\n            name=\"files\",\n            display_name=\"Files\",\n            file_types=TEXT_FILE_TYPES + IMG_FILE_TYPES,\n            info=\"Files to be sent with the message.\",\n            advanced=True,\n            is_list=True,\n            temp_file=True,\n        ),\n    ]\n    outputs = [\n        Output(display_name=\"Chat Message\", name=\"message\", method=\"message_response\"),\n    ]\n\n    async def message_response(self) -> Message:\n        # Ensure files is a list and filter out empty/None values\n        files = self.files if self.files else []\n        if files and not isinstance(files, list):\n            files = [files]\n        # Filter out None/empty values\n        files = [f for f in files if f is not None and f != \"\"]\n\n        # Build endpoints inject caller-controlled file references directly into\n        # ChatInput. Resolve and validate local references before the Message can\n        # later read them while constructing model attachment content.\n        if files:\n            settings_service = get_settings_service()\n            storage_type = getattr(getattr(settings_service, \"settings\", None), \"storage_type\", \"local\")\n            # The storage factory falls back to local storage for unsupported\n            # values, so only the explicitly configured S3 backend may bypass\n            # filesystem containment.\n            if str(storage_type).lower() != \"s3\" and is_local_file_access_restricted():\n                scope_ids = list(component_file_access_scopes(self))\n                # Public executions replace graph.flow_id with a per-visitor\n                # virtual ID. Only the server-populated source provenance may\n                # restore the already-validated public attachment namespace.\n                source_flow_id = getattr(self.graph, \"source_flow_id\", None)\n                if source_flow_id:\n                    scope_ids.append(source_flow_id)\n                for file_path in get_file_paths(files):\n                    enforce_local_file_access(file_path, scope_ids=scope_ids)\n\n        session_id = self.session_id or self.graph.session_id or \"\"\n        message = await Message.create(\n            text=self.input_value,\n            sender=self.sender,\n            sender_name=self.sender_name,\n            session_id=session_id,\n            context_id=self.context_id,\n            files=files,\n        )\n        if session_id and isinstance(message, Message) and self.should_store_message:\n            stored_message = await self.send_message(\n                message,\n            )\n            self.message.value = stored_message\n            message = stored_message\n\n        self.status = message\n        return message\n"
+              },
+              "context_id": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Context ID",
+                "dynamic": false,
+                "info": "The context ID of the chat. Adds an extra layer to the local memory.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "context_id",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "files": {
+                "_input_type": "FileInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Files",
+                "dynamic": false,
+                "fileTypes": [
+                  "csv",
+                  "json",
+                  "pdf",
+                  "txt",
+                  "md",
+                  "mdx",
+                  "yaml",
+                  "yml",
+                  "xml",
+                  "html",
+                  "htm",
+                  "docx",
+                  "py",
+                  "sh",
+                  "sql",
+                  "js",
+                  "ts",
+                  "tsx",
+                  "jpg",
+                  "jpeg",
+                  "png",
+                  "bmp",
+                  "image"
+                ],
+                "file_path": "",
+                "info": "Files to be sent with the message.",
+                "list": true,
+                "list_add_label": "Add More",
+                "name": "files",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "temp_file": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "file",
+                "value": ""
+              },
+              "input_value": {
+                "_input_type": "MultilineInput",
+                "advanced": false,
+                "ai_enabled": false,
+                "api_editable": false,
+                "copy_field": false,
+                "display_name": "Input Text",
+                "dynamic": false,
+                "info": "Message to be passed as input.",
+                "input_types": [],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "multiline": true,
+                "name": "input_value",
+                "override_skip": false,
+                "password": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "sender": {
+                "_input_type": "DropdownInput",
+                "advanced": true,
+                "api_editable": false,
+                "combobox": false,
+                "dialog_inputs": {},
+                "display_name": "Sender Type",
+                "dynamic": false,
+                "external_options": {},
+                "info": "Type of sender.",
+                "name": "sender",
+                "options": [
+                  "Machine",
+                  "User"
+                ],
+                "options_metadata": [],
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "toggle": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "str",
+                "value": "User"
+              },
+              "sender_name": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Sender Name",
+                "dynamic": false,
+                "info": "Name of the sender.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "sender_name",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": "User"
+              },
+              "session_id": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Session ID",
+                "dynamic": false,
+                "info": "The session ID of the chat. If empty, the current session ID parameter will be used.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "session_id",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "should_store_message": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Store Messages",
+                "dynamic": false,
+                "info": "Store the message in the history.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "should_store_message",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "bool",
+                "value": false
+              }
+            },
+            "tool_mode": false
+          },
+          "selected_output": "message"
+        }
+      },
+      {
+        "id": "LogisticsStorageReader-WimDg",
+        "type": "genericNode",
+        "position": {
+          "x": 420,
+          "y": 200
+        },
+        "data": {
+          "id": "LogisticsStorageReader-WimDg",
+          "type": "LogisticsStorageReader",
+          "node": {
+            "template": {
+              "_type": "Component",
+              "code": {
+                "type": "code",
+                "required": true,
+                "placeholder": "",
+                "list": false,
+                "show": true,
+                "multiline": true,
+                "value": "\"\"\"Logistics Storage Reader — Langflow custom component.\n\nMembaca data posko yang sudah tersimpan di Google Sheets (lewat Google Apps Script)\natau dari file CSV lokal (output/rekap_posko.csv).\n\nDipanggil oleh IBM Bob saat memulai sesi baru atau ketika petugas ingin memeriksa\nkondisi posko saat ini sebelum memproses laporan baru.\n\nCara pakai di Langflow: New Custom Component -> tempel seluruh isi file ini.\n\"\"\"\n\nfrom __future__ import annotations\n\nimport csv\nimport json\nimport re\n\"\"\"Kontrak snapshot lokal; generator menyematkan helper ini ke export komponen.\"\"\"\nimport hashlib\nimport json\nimport math\nimport os\nimport re\nimport secrets\nimport time\nimport tempfile\nfrom pathlib import Path\nfrom datetime import datetime, timedelta, timezone\n\n\ndef snapshot_digest(payload):\n    return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(\",\", \":\"), allow_nan=False).encode(\"utf-8\")).hexdigest()\n\n\ndef save_snapshot(payload):\n    directory = Path(os.environ.get(\"SIGAP_SNAPSHOT_DIR\", \"output/.sigap_snapshots\")).expanduser()\n    directory.mkdir(parents=True, exist_ok=True)\n    identifier = secrets.token_hex(16)\n    digest = snapshot_digest(payload)\n    envelope = {\"created_at\": time.time(), \"sha256\": digest, \"payload\": payload}\n    with (directory / (identifier + \".json\")).open(\"x\", encoding=\"utf-8\") as stream:\n        json.dump(envelope, stream, ensure_ascii=False, allow_nan=False)\n    return {\"snapshot_id\": identifier, \"snapshot_sha256\": digest}\n\n\ndef load_snapshot(request):\n    if not isinstance(request, dict) or not re.fullmatch(r\"[a-f0-9]{32}\", str(request.get(\"snapshot_id\", \"\"))):\n        raise ValueError(\"Gunakan snapshot_id dari validate_needs; JSON records bebas tidak diterima.\")\n    if any(key in request for key in (\"records\", \"stock\", \"stock_context\", \"snapshot_records\")):\n        raise ValueError(\"Jangan mengirim ulang/mengubah records atau stok. Gunakan referensi snapshot; koreksi harus melalui validate_needs lagi.\")\n    path = Path(os.environ.get(\"SIGAP_SNAPSHOT_DIR\", \"output/.sigap_snapshots\")).expanduser() / (request[\"snapshot_id\"] + \".json\")\n    try:\n        envelope = json.loads(path.read_text(encoding=\"utf-8\"))\n    except (OSError, ValueError) as exc:\n        raise ValueError(\"Snapshot tidak tersedia; semua flow harus memakai SIGAP_SNAPSHOT_DIR yang sama. Validasi ulang bila kedaluwarsa/hilang.\") from exc\n    if not isinstance(envelope, dict) or not isinstance(envelope.get(\"payload\"), dict) or not isinstance(envelope.get(\"created_at\"), (int, float)) or not isinstance(envelope.get(\"sha256\"), str):\n        raise ValueError(\"File snapshot rusak; jalankan prepare/validate ulang.\")\n    digest = snapshot_digest(envelope[\"payload\"])\n    if digest != envelope[\"sha256\"] or request.get(\"snapshot_sha256\") != digest:\n        raise ValueError(\"Hash snapshot tidak cocok; data berubah atau referensi salah. Validasi dan tampilkan ulang.\")\n    if time.time() - envelope[\"created_at\"] > 86400:\n        raise ValueError(\"Snapshot kedaluwarsa (24 jam); validasi dan persetujuan ulang diperlukan.\")\n    committed = path.with_suffix(\".committed.json\")\n    if committed.exists():\n        try:\n            reference = json.loads(committed.read_text(encoding=\"utf-8\"))\n        except (OSError, ValueError) as exc:\n            raise ValueError(\"Status revisi snapshot tidak dapat dibaca; lakukan read-back.\") from exc\n        raise ValueError(\"Snapshot telah disimpan/direvisi. Gunakan referensi efektif: \" + json.dumps(reference))\n    return envelope[\"payload\"]\n\n\ndef quality_status(record):\n    if any(record.get(k) for k in (\"validation_issues\", \"unverified_numbers\", \"stock_issues\", \"storage_issues\", \"pending_clear_fields\")):\n        return \"PERLU_KLARIFIKASI\"\n    required = (\"shelter_name\", \"village\", \"total_people\", \"male\", \"female\", \"infants_toddlers\", \"elderly\", \"pregnant\", \"breastfeeding\", \"disability\")\n    if record.get(\"missing_fields\") or any(record.get(k) is None or record.get(k) == \"\" for k in required):\n        return \"PARSIAL\"\n    return \"LOLOS_PEMERIKSAAN\"\n\n\ndef clear_options(records):\n    actions = {r[\"report_id\"]: list(r.get(\"pending_clear_fields\", [])) for r in records if r.get(\"pending_clear_fields\")}\n    return {\"available_clear_actions\": actions,\n            \"pending_changes\": [{\"report_id\":r[\"report_id\"],\"shelter_name\":r.get(\"shelter_name\"),\"village\":r.get(\"village\"),\n                                 \"field\":field,\"current_value\":r.get(field),\"proposed_value\":None,\n                                 \"provenance\":r.get(\"field_provenance\",{}).get(field)} for r in records for field in r.get(\"pending_clear_fields\",[])],\n            \"clear_request_template\": {\"approved_clear_fields\": actions, \"confirmed_clear_fields\": True},\n            \"decision_choices\": [\"clear\", \"keep\", \"defer\"],\n            \"instruction\": \"Gunakan report_id persis. Pilih aksi setelah jawaban petugas; officer_note bukan perintah clear. Jangan membuang aksi yang ditolak saat retry.\"}\n\n\ndef resolve_clear_decisions(data, records):\n    \"\"\"Setiap usulan harus memiliki aksi eksplisit; absennya parameter bukan keputusan keep.\"\"\"\n    options = clear_options(records)[\"available_clear_actions\"]\n    clear = data.get(\"approved_clear_fields\", {})\n    decisions = data.get(\"clear_decisions\", {})\n    if not isinstance(clear, dict) or not isinstance(decisions, dict):\n        raise ValueError(\"approved_clear_fields/clear_decisions harus object dengan key report_id persis.\")\n    if (set(clear) | set(decisions)) - set(options):\n        raise ValueError(\"Usulan clear tidak mengacu record snapshot. Gunakan available_clear_actions; jangan tambahkan kata 'snapshot' pada ID.\")\n    resolved = {}\n    for rid, fields in options.items():\n        selected = clear.get(rid, [])\n        choices = decisions.get(rid, {})\n        if not isinstance(selected, list) or any(f not in fields for f in selected) or not isinstance(choices, dict) or set(choices) - set(fields):\n            raise ValueError(\"Field keputusan clear tidak ada pada usulan snapshot.\")\n        resolved[rid] = {}\n        for field in fields:\n            action = choices.get(field, \"clear\" if field in selected else None)\n            if action not in (\"clear\", \"keep\", \"defer\"):\n                raise ValueError(f\"Usulan {rid}.{field} belum diputuskan. Deklarasikan clear/keep/defer setelah petugas memilih; catatan saja tidak cukup.\")\n            if field in selected and action != \"clear\":\n                raise ValueError(\"approved_clear_fields bertentangan dengan clear_decisions.\")\n            if action == \"clear\" and (field not in selected or data.get(\"confirmed_clear_fields\") is not True):\n                raise ValueError(\"Aksi clear membutuhkan approved_clear_fields dan confirmed_clear_fields=true.\")\n            if action != \"clear\" and data.get(\"confirmed_clear_decisions\") is not True:\n                raise ValueError(\"Keep/defer membutuhkan keputusan petugas eksplisit: confirmed_clear_decisions=true.\")\n            resolved[rid][field] = action\n    return clear, resolved\n\n\ndef verify_readback(expected, actual):\n    \"\"\"Bandingkan record/aksi yang disetujui, bukan sekadar jumlah baris.\"\"\"\n    def identity(record):\n        if record.get(\"shelter_id\"):\n            return (record.get(\"disaster_id\") or \"\", record[\"shelter_id\"])\n        normalize = lambda value: \" \".join(w for w in re.findall(r\"[a-z0-9]+\", str(value or \"\").lower()) if w not in {\"posko\",\"desa\",\"kelurahan\",\"pengungsian\",\"tenda\"})\n        return (normalize(record.get(\"shelter_name\")),normalize(record.get(\"village\")))\n    def scalar(value):\n        return None if value == \"\" else value\n    def item(value):\n        if isinstance(value,dict):\n            return value.get(\"item\",\"\") + (f\" ({value['qty']} {value.get('unit') or ''})\".rstrip() if value.get(\"qty\") else \"\")\n        return str(value)\n    indexed = {}\n    for record in actual:\n        indexed.setdefault(identity(record),[]).append(record)\n    differences, matched = [], 0\n    fields = (\"batch_id\",\"report_id\",\"shelter_type\",\"total_people\",\"total_families\",\"male\",\"female\",\"infants_toddlers\",\"children\",\"elderly\",\"pregnant\",\"breastfeeding\",\"disability\",\"is_estimate\",\"validation_status\")\n    for record in expected.get(\"records\",[]):\n        matches = indexed.get(identity(record),[])\n        rid = record.get(\"report_id\")\n        if len(matches) != 1:\n            differences.append({\"report_id\":rid,\"field\":\"identity\",\"reason\":\"record hilang/ambigu\"})\n            continue\n        observed, matched = matches[0], matched+1\n        for field in fields:\n            if record.get(field) is not None and scalar(observed.get(field)) != record[field]:\n                differences.append({\"report_id\":rid,\"field\":field,\"expected\":record[field],\"actual\":observed.get(field)})\n        if record.get(\"reported_at\"):\n            try:\n                times=[]\n                for value in (record[\"reported_at\"],observed.get(\"reported_at\")):\n                    parsed=datetime.fromisoformat(str(value))\n                    times.append((parsed.replace(tzinfo=timezone(timedelta(hours=7))) if parsed.tzinfo is None else parsed).timestamp())\n                if times[0] != times[1]:\n                    differences.append({\"report_id\":rid,\"field\":\"reported_at\",\"reason\":\"waktu laporan berbeda\"})\n            except ValueError:\n                differences.append({\"report_id\":rid,\"field\":\"reported_at\",\"reason\":\"waktu laporan tidak valid/hilang\"})\n        for correction in record.get(\"corrections\",[]):\n            field = correction.get(\"field\")\n            if correction.get(\"action\") == \"cleared_by_officer\" and record.get(field) is None and scalar(observed.get(field)) is not None:\n                differences.append({\"report_id\":rid,\"field\":field,\"reason\":\"clear disetujui tetapi belum diterapkan\",\"actual\":observed.get(field)})\n        for key,amount in (record.get(\"stock\") or {}).items():\n            if amount is not None and (observed.get(\"stock\") or {}).get(key) != amount:\n                differences.append({\"report_id\":rid,\"field\":\"stock.\"+key,\"expected\":amount,\"actual\":(observed.get(\"stock\") or {}).get(key)})\n            if amount is not None and (observed.get(\"stock_context\") or {}).get(key) != (record.get(\"stock_context\") or {}).get(key):\n                differences.append({\"report_id\":rid,\"field\":\"stock_context.\"+key,\"reason\":\"metadata stok berbeda\"})\n        for field in (\"urgent_needs\",\"surplus_do_not_send\"):\n            if record.get(field) or (field == \"urgent_needs\" and record.get(\"needs_cleared\")):\n                if [item(v) for v in record.get(field,[])] != [item(v) for v in observed.get(field,[])]:\n                    differences.append({\"report_id\":rid,\"field\":field,\"reason\":\"daftar barang berbeda\"})\n    return {\"status\":\"verified\" if not differences else \"mismatch\", \"expected_count\":len(expected.get(\"records\",[])),\n            \"matched_count\":matched,\"difference_count\":len(differences),\"differences\":differences}\n\n\ndef commit_snapshot(original, effective, storage):\n    \"\"\"Publish revisi hanya sesudah writer sukses; referensi kandidat lama dihentikan.\"\"\"\n    load_snapshot(original)\n    payload = dict(effective)\n    payload[\"snapshot_kind\"] = \"committed\"\n    payload[\"parent_snapshot\"] = original\n    payload[\"storage\"] = storage\n    reference = save_snapshot(payload)\n    directory = Path(os.environ.get(\"SIGAP_SNAPSHOT_DIR\", \"output/.sigap_snapshots\")).expanduser()\n    target = directory / (original[\"snapshot_id\"] + \".committed.json\")\n    temporary = None\n    try:\n        with tempfile.NamedTemporaryFile(mode=\"w\", encoding=\"utf-8\", dir=directory, delete=False) as stream:\n            temporary = stream.name\n            json.dump(reference, stream)\n        os.replace(temporary, target)\n    finally:\n        if temporary and os.path.exists(temporary):\n            os.unlink(temporary)\n    return reference\n\n\ndef save_source(text, correction_target=None, correction_base=None, candidate_target=None):\n    payload = {\"source_text\": text}\n    if candidate_target is not None:\n        if correction_target is not None or correction_base is not None:\n            raise ValueError(\"Pilih kandidat atau baris tersimpan, bukan kedua target sekaligus.\")\n        get_candidate_record(candidate_target)\n        payload[\"candidate_target\"] = candidate_target\n    if correction_target is not None:\n        get_correction_record(correction_target)\n        payload[\"correction_target\"] = correction_target\n    if correction_base is not None:\n        if correction_target is None:\n            raise ValueError(\"Kandidat koreksi memerlukan target read-back.\")\n        get_correction_base(correction_base)\n        payload[\"correction_base\"] = correction_base\n    reference = save_snapshot(payload)\n    return {\"batch_id\": reference[\"snapshot_id\"], \"source_sha256\": reference[\"snapshot_sha256\"]}\n\n\ndef load_source(reference):\n    return load_source_context(reference)[\"source_text\"]\n\n\ndef load_source_context(reference):\n    return load_snapshot({\"snapshot_id\": reference.get(\"batch_id\"), \"snapshot_sha256\": reference.get(\"source_sha256\")})\n\n\ndef get_correction_record(target):\n    if not isinstance(target, dict):\n        raise ValueError(\"Target koreksi harus referensi read-back.\")\n    snapshot = load_snapshot({k: target.get(k) for k in (\"snapshot_id\", \"snapshot_sha256\")})\n    index = target.get(\"record_index\")\n    records = snapshot.get(\"records\", [])\n    if snapshot.get(\"snapshot_kind\") != \"storage_readback\" or type(index) is not int or not 0 <= index < len(records):\n        raise ValueError(\"Target koreksi tidak mengacu baris read-back yang sah.\")\n    record = records[index]\n    if not record.get(\"batch_id\") or not record.get(\"report_id\") or not record.get(\"shelter_name\"):\n        raise ValueError(\"Baris asal belum memiliki identitas batch/laporan/posko untuk koreksi.\")\n    return json.loads(json.dumps(record))\n\n\ndef get_correction_base(reference):\n    if not isinstance(reference, dict):\n        raise ValueError(\"Referensi kandidat koreksi tidak valid.\")\n    snapshot = load_snapshot({k: reference.get(k) for k in (\"snapshot_id\", \"snapshot_sha256\")})\n    index = reference.get(\"record_index\")\n    records = snapshot.get(\"records\", [])\n    if snapshot.get(\"snapshot_kind\") != \"correction_candidate\" or type(index) is not int or not 0 <= index < len(records):\n        raise ValueError(\"Referensi bukan kandidat koreksi yang sah.\")\n    return json.loads(json.dumps(records[index]))\n\n\ndef get_candidate_record(reference):\n    if not isinstance(reference, dict):\n        raise ValueError(\"Target kandidat harus referensi snapshot.\")\n    snapshot = load_snapshot({k: reference.get(k) for k in (\"snapshot_id\", \"snapshot_sha256\")})\n    index = reference.get(\"record_index\")\n    records = snapshot.get(\"records\", [])\n    if snapshot.get(\"snapshot_kind\") not in (\"report_candidate\", \"correction_candidate\") or type(index) is not int or not 0 <= index < len(records):\n        raise ValueError(\"Target bukan kandidat yang sah.\")\n    record = records[index]\n    if not record.get(\"report_id\") or not record.get(\"batch_id\") or not record.get(\"shelter_name\"):\n        raise ValueError(\"Kandidat belum memiliki identitas laporan/batch/posko.\")\n    return json.loads(json.dumps(record))\n\n\ndef matches_update_target(row, header, target):\n    \"\"\"Koreksi menunjuk baris asal; tidak boleh jatuh kembali ke append.\"\"\"\n    if not isinstance(target, dict) or not target.get(\"batch_id\") or not target.get(\"report_id\") or not isinstance(target.get(\"expected\"), dict):\n        raise ValueError(\"Target update tidak valid.\")\n    columns = {\"batch_id\": \"batch_id\", \"report_id\": \"id_laporan\", \"shelter_name\": \"posko\", \"village\": \"desa\", \"disaster_id\": \"disaster_id\", \"shelter_id\": \"shelter_id\"}\n    value = lambda v: \"\" if v is None else str(v).strip().removeprefix(\"'\")\n    for field, column in columns.items():\n        actual = row[header.index(column)] if column in header else \"\"\n        if value(actual) != value(target.get(field)):\n            return False\n    for column, expected in target[\"expected\"].items():\n        if column not in header:\n            return False\n        actual = row[header.index(column)]\n        if column in (\"waktu_laporan\", \"dicatat_pada\") and expected:\n            try:\n                times = []\n                for item in (actual, expected):\n                    parsed = datetime.fromisoformat(str(item))\n                    times.append((parsed.replace(tzinfo=timezone(timedelta(hours=7))) if parsed.tzinfo is None else parsed).timestamp())\n                if times[0] != times[1]:\n                    return False\n            except (ValueError, TypeError):\n                return False\n        elif isinstance(expected, bool):\n            if value(actual).lower() != str(expected).lower():\n                return False\n        elif isinstance(expected, (dict, list)):\n            try:\n                if json.loads(actual) != expected:\n                    return False\n            except (ValueError, TypeError):\n                return False\n        elif value(actual) != value(expected):\n            return False\n    return True\n\n\nSTOCK_ALIASES = {\"water\": \"air_liter_per_hari\", \"food\": \"kkal_per_hari\", \"latrines\": \"jamban_unit\", \"shelter_area\": \"ruang_hunian_m2\"}\nSTOCK_UNITS = {\"air_liter_per_hari\": \"L\", \"kkal_per_hari\": \"kkal\", \"jamban_unit\": \"unit\", \"ruang_hunian_m2\": \"m2\"}\n\n\ndef normalize_stock(record):\n    \"\"\"Normalisasi alias eksplisit tanpa konversi ukuran atau periode.\"\"\"\n    stock, context, issues = {}, {}, []\n    raw_stock, raw_context = record.get(\"stock\") or {}, record.get(\"stock_context\") or {}\n    if not isinstance(raw_stock, dict) or not isinstance(raw_context, dict):\n        return {}, {}, [\"stock dan stock_context harus object.\"]\n    for original in set(raw_stock) | set(raw_context):\n        key = STOCK_ALIASES.get(original, original)\n        if key not in STOCK_UNITS:\n            issues.append(f\"Key stok tidak dikenal: {original}.\")\n            continue\n        meta = raw_context.get(original) or {}\n        if not isinstance(meta, dict):\n            issues.append(f\"Metadata stok {original} harus object.\")\n            continue\n        amount = raw_stock.get(original, meta.get(\"value\"))\n        if key in stock:\n            issues.append(f\"Alias stok ganda/ambigu untuk {key}.\")\n            stock[key] = None\n            continue\n        meta = dict(meta)\n        meta.pop(\"value\", None)\n        unit = str(meta.get(\"unit\") or \"\")\n        meta[\"unit\"] = {\"liter\": \"L\", \"litre\": \"L\", \"l\": \"L\", \"m²\": \"m2\"}.get(unit.lower(), unit)\n        if amount is not None and (isinstance(amount, bool) or not isinstance(amount, (int, float)) or not math.isfinite(amount) or amount < 0):\n            issues.append(f\"Stok {key} harus angka finite nonnegatif.\")\n            amount = None\n        stock[key], context[key] = amount, meta\n    return stock, context, issues\n\n\ndef merge_storage_json_cells(old, incoming, merged, header):\n    \"\"\"Metadata parsial di storage mengikuti aturan nilai tidak disebut, bukan replace object.\"\"\"\n    def get(row, column, default):\n        if column not in header:\n            return default\n        value = row[header.index(column)]\n        parsed = json.loads(value) if value else default\n        if not isinstance(parsed, type(default)):\n            raise ValueError(f\"Metadata {column} tidak valid.\")\n        return parsed\n    def put(column, value):\n        if column in header:\n            merged[header.index(column)] = json.dumps(value, ensure_ascii=False, sort_keys=True)\n    if \"stok_json\" in header:\n        before, after = get(old,\"stok_json\",{}), get(incoming,\"stok_json\",{})\n        issues = get(incoming,\"masalah_stok_json\",[])\n        changed = {k for k,v in after.items() if v is not None or any(k in str(issue) for issue in issues)}\n        combined = dict(before)\n        combined.update({k: after[k] for k in changed})\n        put(\"stok_json\", combined)\n        context = dict(get(old,\"konteks_stok_json\",{}))\n        new_context = get(incoming,\"konteks_stok_json\",{})\n        context.update({k:new_context.get(k,{}) for k in changed})\n        put(\"konteks_stok_json\",context)\n    if \"provenance_json\" in header:\n        proof = dict(get(old,\"provenance_json\",{}))\n        new_proof = get(incoming,\"provenance_json\",{})\n        for key,value in new_proof.items():\n            # Stok placeholder tidak boleh mengganti provenance nilai lama.\n            if key.startswith(\"stock.\") and \"stok_json\" in header and key[6:] not in changed:\n                continue\n            proof[key] = value\n        put(\"provenance_json\",proof)\n    for column in (\"riwayat_catatan_json\", \"riwayat_koreksi_json\", \"sumber_laporan_json\"):\n        if column in header:\n            values = get(old,column,[]) + get(incoming,column,[])\n            unique = {json.dumps(v,sort_keys=True,ensure_ascii=False):v for v in values}\n            put(column,list(unique.values()))\n    return merged\n\nfrom datetime import datetime\nfrom pathlib import Path\n\nimport httpx\n\nfrom lfx.custom.custom_component.component import Component\nfrom lfx.io import DropdownInput, MessageTextInput, Output, SecretStrInput, StrInput\nfrom lfx.schema.message import Message\n\n\ndef read_from_google(url: str, secret: str) -> dict:\n    body = {\"action\": \"read_rows\", \"secret\": secret}\n    resp = httpx.post(url, json=body, timeout=30, follow_redirects=True)\n    resp.raise_for_status()\n    result = resp.json()\n    if not result.get(\"ok\"):\n        raise RuntimeError(f\"Apps Script menolak: {result.get('error')}\")\n    return result\n\n\ndef read_from_csv(csv_path: str) -> dict:\n    path = Path(csv_path).expanduser()\n    if not path.exists() or path.stat().st_size == 0:\n        return {\"header\": [], \"rows\": [], \"count\": 0, \"path\": str(path.resolve())}\n\n    with path.open(\"r\", encoding=\"utf-8-sig\", newline=\"\") as fh:\n        reader = csv.reader(fh)\n        header = next(reader, [])\n        rows = list(reader)\n\n    return {\"header\": header, \"rows\": rows, \"count\": len(rows), \"path\": str(path.resolve())}\n\n\ndef build_records(header: list[str], rows: list[list[str]]) -> list[dict]:\n    \"\"\"Ubah baris spreadsheet/CSV menjadi list of dict record terstruktur.\"\"\"\n    records = []\n    for r in rows:\n        rec = {}\n        for idx, col in enumerate(header):\n            if idx < len(r):\n                val = r[idx]\n                if isinstance(val, str) and val.startswith(\"'\"):\n                    val = val[1:]  # hapus formula prefix guard\n                rec[col] = val\n        records.append(normalize_record(rec))\n    return records\n\n\nCOLUMN_MAP = {\n    \"waktu_laporan\": \"reported_at\", \"id_laporan\": \"report_id\",\n    \"posko\": \"shelter_name\", \"desa\": \"village\", \"jenis_pengungsian\": \"shelter_type\",\n    \"jumlah_jiwa\": \"total_people\", \"jumlah_kk\": \"total_families\",\n    \"laki_laki\": \"male\", \"perempuan\": \"female\", \"bayi_balita\": \"infants_toddlers\",\n    \"anak\": \"children\", \"lansia\": \"elderly\", \"ibu_hamil\": \"pregnant\",\n    \"ibu_menyusui\": \"breastfeeding\", \"disabilitas\": \"disability\",\n    \"kebutuhan_mendesak\": \"urgent_needs\", \"sudah_cukup\": \"surplus_do_not_send\",\n    \"catatan\": \"notes\",\n    \"stok_json\": \"stock\", \"konteks_stok_json\": \"stock_context\",\n    \"provenance_json\": \"field_provenance\", \"sumber_laporan_json\": \"source_report_ids\",\n    \"masalah_validasi_json\": \"validation_issues\", \"angka_tidak_terverifikasi_json\": \"unverified_numbers\",\n    \"field_kosong_json\": \"missing_fields\", \"masalah_stok_json\": \"stock_issues\",\n    \"riwayat_catatan_json\": \"notes_history\", \"riwayat_koreksi_json\": \"corrections\",\n    \"usulan_clear_json\": \"pending_clear_fields\", \"estimasi\": \"is_estimate\",\n    \"status_validasi\": \"validation_status\",\n}\nJSON_OBJECT_FIELDS = {\"stock\", \"stock_context\", \"field_provenance\"}\nJSON_LIST_FIELDS = {\"source_report_ids\", \"validation_issues\", \"unverified_numbers\", \"missing_fields\",\n                    \"stock_issues\", \"notes_history\", \"corrections\", \"pending_clear_fields\"}\nCOUNT_FIELDS = {\"total_people\", \"total_families\", \"male\", \"female\", \"infants_toddlers\",\n                \"children\", \"elderly\", \"pregnant\", \"breastfeeding\", \"disability\"}\n\n\ndef normalize_record(record: dict) -> dict:\n    \"\"\"Adapter penyimpanan -> schema analisis; nilai tidak valid tetap tidak diketahui.\"\"\"\n    rec = {COLUMN_MAP.get(k, k): v for k, v in record.items()}\n    issues = []\n    for field in COUNT_FIELDS:\n        value = rec.get(field)\n        if value is None or value == \"\":\n            rec[field] = None\n        elif isinstance(value, bool):\n            rec[field] = None\n            issues.append(field)\n        elif isinstance(value, int) and value >= 0:\n            pass\n        elif isinstance(value, str) and re.fullmatch(r\"\\d+|\\d{1,3}(?:[.,]\\d{3})+\", value.strip()):\n            rec[field] = int(re.sub(r\"[.,]\", \"\", value.strip()))\n        else:\n            rec[field] = None\n            issues.append(field)\n    value = rec.get(\"reported_at\")\n    if isinstance(value, datetime):\n        rec[\"reported_at\"] = value.isoformat(timespec=\"minutes\")\n    elif value == \"\" or value is None:\n        rec[\"reported_at\"] = None\n    else:\n        try:\n            text = re.sub(r\"^(\\d{4}-\\d{2}-\\d{2}[ T])(\\d):\", r\"\\g<1>0\\2:\", str(value))\n            rec[\"reported_at\"] = datetime.fromisoformat(text).isoformat(timespec=\"minutes\")\n        except ValueError:\n            rec[\"reported_at\"] = None\n            issues.append(\"reported_at\")\n    for field in (\"urgent_needs\", \"surplus_do_not_send\"):\n        value = rec.get(field)\n        rec[field] = [s.strip() for s in value.split(\";\") if s.strip()] if isinstance(value, str) else (value if isinstance(value, list) else [])\n    for field in JSON_OBJECT_FIELDS | JSON_LIST_FIELDS:\n        value = rec.get(field)\n        expected = dict if field in JSON_OBJECT_FIELDS else list\n        try:\n            value = json.loads(value) if isinstance(value, str) and value else (value if value is not None and value != \"\" else expected())\n            if not isinstance(value, expected):\n                raise ValueError(\"tipe metadata salah\")\n        except (ValueError, TypeError):\n            issues.append(field)\n            value = expected()\n        rec[field] = value\n    value = rec.get(\"is_estimate\")\n    if isinstance(value, bool) or value is None or value == \"\":\n        rec[\"is_estimate\"] = value if isinstance(value, bool) else None\n    elif str(value).lower() in (\"true\", \"false\"):\n        rec[\"is_estimate\"] = str(value).lower() == \"true\"\n    else:\n        rec[\"is_estimate\"] = None\n        issues.append(\"is_estimate\")\n    if issues:\n        rec[\"storage_issues\"] = issues\n    return rec\n\n\ndef format_shelter_summary(records: list[dict], source_info: str, *, source_count=None, query=\"\", reference=None, verification=None) -> str:\n    source_count = len(records) if source_count is None else source_count\n    metadata = {\"status\": \"ok\" if records else \"no_matches\" if source_count else \"source_empty\",\n                \"source\": source_info, \"total_shelters\": source_count, \"matched_shelters\": len(records), \"records\": records}\n    metadata[\"verification\"] = verification or {\"status\":\"not_requested\",\"reason\":\"Sertakan expected_snapshot_id/expected_snapshot_sha256 dari receipt writer untuk verifikasi aksi.\"}\n    if reference:\n        metadata.update(reference)\n    compact = {k: metadata[k] for k in (\"status\", \"source\", \"total_shelters\", \"matched_shelters\", \"snapshot_id\", \"snapshot_sha256\") if k in metadata}\n    compact[\"verification_status\"] = metadata[\"verification\"][\"status\"]\n    prefix = \"SIGAP_READ_RESULT \" + json.dumps(compact, ensure_ascii=False) + \"\\n\"\n    if not records:\n        message = (f\"Tidak ada posko cocok dengan filter '{query}'. Sumber {source_info} berisi {source_count} posko; penyimpanan TIDAK kosong.\"\n                   if source_count else f\"Sheet rekap ({source_info}) saat ini masih KOSONG. Belum ada data posko yang tercatat.\")\n        return prefix + message + \"\\n```json\\n\" + json.dumps(metadata, ensure_ascii=False, indent=2) + \"\\n```\"\n\n    lines = [\n        f\"📊 **Data Posko Tersimpan ({source_info})** — Total: {len(records)} Posko\",\n        \"\",\n    ]\n    if metadata[\"verification\"][\"status\"] == \"mismatch\":\n        lines.append(\"VERIFIKASI BELUM SESUAI: jumlah baris terbaca tidak berarti semua aksi diterapkan.\")\n        lines.extend(\"- \" + json.dumps(item,ensure_ascii=False) for item in metadata[\"verification\"][\"differences\"])\n    elif metadata[\"verification\"][\"status\"] == \"verified\":\n        lines.append(f\"Verifikasi aksi sesuai: {metadata['verification']['matched_count']} record yang diharapkan cocok.\")\n    else:\n        lines.append(\"Data terbaca; verifikasi terhadap aksi write belum diminta.\")\n\n    for i, r in enumerate(records, 1):\n        posko = r.get(\"posko\") or r.get(\"shelter_name\") or f\"Posko {i}\"\n        desa = r.get(\"desa\") or r.get(\"village\") or \"-\"\n        jiwa = r.get(\"total_people\") if r.get(\"total_people\") is not None else r.get(\"jumlah_jiwa\")\n        jiwa = \"?\" if jiwa is None or jiwa == \"\" else jiwa\n        kebutuhan = r.get(\"kebutuhan_mendesak\") or r.get(\"urgent_needs\") or \"belum dicatat\"\n        waktu = r.get(\"waktu_laporan\") or r.get(\"reported_at\") or \"-\"\n        versi = r.get(\"versi\")\n        ver_str = f\" [v{versi}]\" if versi else \"\"\n\n        lines.append(f\"{i}. **{posko}** (Desa: {desa}){ver_str}\")\n        lines.append(f\"   • Jumlah jiwa: **{'± ' if r.get('is_estimate') else ''}{jiwa} jiwa**\")\n        lines.append(f\"   • Kebutuhan mendesak: {kebutuhan}\")\n        lines.append(f\"   • Waktu laporan: {waktu}\")\n        lines.append(f\"   • Status validasi: {r.get('validation_status') or quality_status(r)} (berbeda dari persetujuan simpan)\")\n\n    lines.append(\"\")\n    lines.append(\"```json\")\n    lines.append(json.dumps(metadata, ensure_ascii=False, indent=2))\n    lines.append(\"```\")\n\n    return prefix + \"\\n\".join(lines)\n\n\ndef parse_query(text):\n    \"\"\"Perintah baca-semua berbeda dari filter eksplisit/literal nama.\"\"\"\n    text = text.strip()\n    if text.startswith(\"{\"):\n        data = json.loads(text)\n        if data.get(\"action\") == \"all\":\n            return \"\"\n        if data.get(\"action\") == \"filter\" and isinstance(data.get(\"term\"), str):\n            return data[\"term\"].strip().lower()\n        raise ValueError('Kueri JSON harus {\"action\":\"all\"} atau {\"action\":\"filter\",\"term\":\"nama/desa\"}.')\n    lowered = text.lower()\n    if not lowered or re.search(r\"\\b(?:semua|seluruh|all)\\b\", lowered) or lowered in (\"cek\", \"baca\", \"status\", \"halo\", \"hi\", \"lihat\", \"posko\", \"cek posko aktif\"):\n        return \"\"\n    return re.sub(r\"^(?:cek|baca|lihat|cari)\\s+\", \"\", lowered)\n\n\nclass LogisticsStorageReader(Component):\n    display_name = \"Logistics Storage Reader\"\n    description = \"Membaca data posko yang sudah tersimpan di Google Sheets atau CSV untuk mengecek kondisi di awal sesi.\"\n    icon = \"database\"\n    name = \"LogisticsStorageReader\"\n\n    inputs = [\n        MessageTextInput(\n            name=\"query\",\n            display_name=\"Kueri Pencarian / Sapaan\",\n            required=False,\n            info=\"Pesan dari user, atau filter nama posko/desa (opsional, kosongkan untuk semua).\",\n        ),\n        DropdownInput(\n            name=\"storage_mode\",\n            display_name=\"Mode Penyimpanan\",\n            options=[\"auto\", \"google_sheets\", \"csv\"],\n            value=\"auto\",\n            info=\"auto: Google Sheets jika Webhook URL terisi, selain itu CSV.\",\n        ),\n        SecretStrInput(\n            name=\"webhook_url\",\n            display_name=\"Webhook URL (Apps Script)\",\n            required=False,\n            info=\"URL Web App Google Apps Script. Kosongkan untuk mode CSV lokal.\",\n        ),\n        SecretStrInput(\n            name=\"shared_secret\",\n            display_name=\"Shared Secret\",\n            required=False,\n            advanced=True,\n            info=\"Harus sama dengan SHARED_SECRET di Code.gs.\",\n        ),\n        StrInput(\n            name=\"csv_path\",\n            display_name=\"Lokasi File CSV\",\n            value=\"output/rekap_posko.csv\",\n            advanced=True,\n            info=\"Path file CSV lokal rekap posko.\",\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Daftar Posko\", name=\"shelter_records\", method=\"fetch\"),\n    ]\n\n    def fetch(self) -> Message:\n        mode = (getattr(self, \"storage_mode\", None) or \"auto\").strip()\n        url = (getattr(self, \"webhook_url\", None) or \"\").strip()\n        secret = getattr(self, \"shared_secret\", None) or \"\"\n        csv_path = getattr(self, \"csv_path\", None) or \"output/rekap_posko.csv\"\n        records: list[dict] = []\n        source_info = \"\"\n        observed_storage = {}\n        google_read_ok = False\n\n        # 1. Coba Google Sheets jika mode mengizinkan dan URL terisi\n        if mode in (\"auto\", \"google_sheets\") and url:\n            try:\n                res = read_from_google(url, secret)\n                header = res.get(\"header\", [])\n                rows = res.get(\"rows\", [])\n                records = [normalize_record(r) for r in res[\"records\"]] if isinstance(res.get(\"records\"), list) else build_records(header, rows)\n                google_read_ok = True\n                source_info = \"Google Sheets\" + (\": \" + str(res[\"url\"]) if res.get(\"url\") else \"\")\n                observed_storage = {\"mode\":\"google_sheets\",\"url\":res.get(\"url\")}\n                self.status = f\"{len(records)} posko dibaca dari Google Sheets\"\n            except Exception as exc:\n                if mode == \"google_sheets\":\n                    self.status = \"Gagal membaca Google Sheets\"\n                    return Message(text=f\"GAGAL membaca dari Google Sheets: {exc}\")\n                # Pada mode auto, lanjut coba CSV fallback\n                pass\n\n        # 2. Coba CSV jika belum berhasil dari Google Sheets\n        if not google_read_ok and mode in (\"auto\", \"csv\"):\n            try:\n                csv_data = read_from_csv(csv_path.strip())\n                records = build_records(csv_data[\"header\"], csv_data[\"rows\"])\n                source_info = f\"CSV: {csv_data['path']}\"\n                observed_storage = {\"mode\":\"csv\",\"path\":csv_data[\"path\"]}\n                self.status = f\"{len(records)} posko dibaca dari CSV\"\n            except Exception as exc:\n                self.status = \"Gagal membaca CSV\"\n                return Message(text=f\"GAGAL membaca dari CSV: {exc}\")\n\n        if mode == \"google_sheets\" and not url:\n            return Message(text=\"GAGAL: Webhook URL Google Sheets belum diisi.\")\n\n        # Filter jika kueri mengandung nama tertentu\n        source_count = len(records)\n        verification = None\n        try:\n            query_value = getattr(self, \"query\", \"\") or \"\"\n            query_text = parse_query(query_value)\n            request = json.loads(query_value) if query_value.strip().startswith(\"{\") else {}\n            if any(k in request for k in (\"expected_snapshot_id\",\"expected_snapshot_sha256\")):\n                if query_text:\n                    raise ValueError(\"Verifikasi write memerlukan action=all, bukan filter.\")\n                expected = load_snapshot({\"snapshot_id\":request.get(\"expected_snapshot_id\"),\"snapshot_sha256\":request.get(\"expected_snapshot_sha256\")})\n                if expected.get(\"snapshot_kind\") != \"committed\":\n                    raise ValueError(\"Gunakan referensi efektif dari SIGAP_WRITE_RESULT, bukan kandidat/read-back lama.\")\n                verification = verify_readback(expected,records)\n                expected_storage = expected.get(\"storage\",{})\n                location = \"url\" if expected_storage.get(\"mode\") == \"google_sheets\" else \"path\"\n                same_location = expected_storage.get(location) == observed_storage.get(location)\n                if location == \"path\" and expected_storage.get(location) and observed_storage.get(location):\n                    same_location = Path(expected_storage[location]) == Path(observed_storage[location])\n                if expected_storage.get(\"mode\") != observed_storage.get(\"mode\") or not same_location:\n                    verification[\"status\"] = \"mismatch\"\n                    verification[\"differences\"].append({\"field\":\"storage\",\"reason\":\"sumber read-back tidak sama dengan receipt writer\"})\n                    verification[\"difference_count\"] = len(verification[\"differences\"])\n        except (ValueError, TypeError, OSError) as exc:\n            return Message(text=f\"GAGAL: {exc}\")\n        if query_text:\n            filtered = [\n                r for r in records\n                if query_text in str(r.get(\"shelter_name\", \"\")).lower() or query_text in str(r.get(\"village\", \"\")).lower()\n            ]\n            records = filtered\n\n        reference = None\n        if records:\n            try:\n                reference = save_snapshot({\"records\": records, \"report_records\": records, \"snapshot_kind\": \"storage_readback\",\n                                           \"verification\": verification or {\"status\":\"not_requested\"},\n                                           \"storage\": {\"source\": source_info, \"source_count\": source_count, \"filter\": query_text}})\n            except (ValueError, OSError) as exc:\n                return Message(text=f\"GAGAL: data terbaca tetapi referensi read-back tidak dapat dibuat ({exc}).\")\n        summary = format_shelter_summary(records, source_info or \"Penyimpanan Lokal\", source_count=source_count, query=query_text, reference=reference, verification=verification)\n        return Message(text=summary)\n",
+                "fileTypes": [],
+                "file_path": "",
+                "password": false,
+                "name": "code",
+                "advanced": true,
+                "api_editable": false,
+                "dynamic": true,
+                "info": "",
+                "load_from_db": false,
+                "title_case": false
+              },
+              "csv_path": {
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "load_from_db": false,
+                "list": false,
+                "list_add_label": "Add More",
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "csv_path",
+                "value": "output/rekap_posko.csv",
+                "display_name": "Lokasi File CSV",
+                "advanced": true,
+                "api_editable": false,
+                "dynamic": false,
+                "info": "Path file CSV lokal rekap posko.",
+                "title_case": false,
+                "track_in_telemetry": false,
+                "type": "str",
+                "_input_type": "StrInput"
+              },
+              "query": {
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "load_from_db": false,
+                "list": false,
+                "list_add_label": "Add More",
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "query",
+                "value": "",
+                "display_name": "Kueri Pencarian / Sapaan",
+                "advanced": false,
+                "api_editable": false,
+                "input_types": [
+                  "Message"
+                ],
+                "dynamic": false,
+                "info": "Pesan dari user, atau filter nama posko/desa (opsional, kosongkan untuk semua).",
+                "title_case": false,
+                "track_in_telemetry": false,
+                "type": "str",
+                "_input_type": "MessageTextInput"
+              },
+              "shared_secret": {
+                "load_from_db": true,
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "shared_secret",
+                "value": "",
+                "display_name": "Shared Secret",
+                "advanced": true,
+                "api_editable": false,
+                "input_types": [],
+                "dynamic": false,
+                "info": "Harus sama dengan SHARED_SECRET di Code.gs.",
+                "title_case": false,
+                "track_in_telemetry": false,
+                "password": true,
+                "type": "str",
+                "_input_type": "SecretStrInput"
+              },
+              "storage_mode": {
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "options": [
+                  "auto",
+                  "google_sheets",
+                  "csv"
+                ],
+                "options_metadata": [],
+                "combobox": false,
+                "dialog_inputs": {},
+                "toggle": false,
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "storage_mode",
+                "value": "auto",
+                "display_name": "Mode Penyimpanan",
+                "advanced": false,
+                "api_editable": false,
+                "dynamic": false,
+                "info": "auto: Google Sheets jika Webhook URL terisi, selain itu CSV.",
+                "title_case": false,
+                "track_in_telemetry": true,
+                "external_options": {},
+                "type": "str",
+                "_input_type": "DropdownInput"
+              },
+              "webhook_url": {
+                "load_from_db": true,
+                "override_skip": false,
+                "required": false,
+                "placeholder": "",
+                "show": true,
+                "name": "webhook_url",
+                "value": "",
+                "display_name": "Webhook URL (Apps Script)",
+                "advanced": false,
+                "api_editable": false,
+                "input_types": [],
+                "dynamic": false,
+                "info": "URL Web App Google Apps Script. Kosongkan untuk mode CSV lokal.",
+                "title_case": false,
+                "track_in_telemetry": false,
+                "password": true,
+                "type": "str",
+                "_input_type": "SecretStrInput"
+              }
+            },
+            "description": "Membaca data posko yang sudah tersimpan di Google Sheets atau CSV untuk mengecek kondisi di awal sesi.",
+            "icon": "database",
+            "base_classes": [
+              "Message"
+            ],
+            "display_name": "Logistics Storage Reader",
+            "documentation": "",
+            "minimized": false,
+            "custom_fields": {},
+            "output_types": [],
+            "pinned": false,
+            "conditional_paths": [],
+            "frozen": false,
+            "outputs": [
+              {
+                "types": [
+                  "Message"
+                ],
+                "selected": "Message",
+                "name": "shelter_records",
+                "hidden": null,
+                "display_name": "Daftar Posko",
+                "method": "fetch",
+                "value": "__UNDEFINED__",
+                "cache": true,
+                "required_inputs": null,
+                "allows_loop": false,
+                "loop_types": null,
+                "group_outputs": false,
+                "options": null,
+                "tool_mode": true
+              }
+            ],
+            "field_order": [
+              "query",
+              "storage_mode",
+              "webhook_url",
+              "shared_secret",
+              "csv_path"
+            ],
+            "beta": false,
+            "legacy": false,
+            "edited": false,
+            "metadata": {
+              "module": "custom_components.logistics_storage_reader",
+              "code_hash": "6638d6e92fdf",
+              "dependencies": {
+                "total_dependencies": 2,
+                "dependencies": [
+                  {
+                    "name": "httpx",
+                    "version": "0.28.1"
+                  },
+                  {
+                    "name": "lfx",
+                    "version": "1.12.4"
+                  }
+                ]
+              }
+            },
+            "tool_mode": false
+          },
+          "selected_output": "shelter_records"
+        }
+      },
+      {
+        "id": "ChatOutput-NlZ3f",
+        "type": "genericNode",
+        "position": {
+          "x": 840,
+          "y": 200
+        },
+        "data": {
+          "id": "ChatOutput-NlZ3f",
+          "type": "ChatOutput",
+          "node": {
+            "base_classes": [
+              "Message"
+            ],
+            "beta": false,
+            "conditional_paths": [],
+            "custom_fields": {},
+            "description": "Display a chat message in the Playground.",
+            "display_name": "Chat Output",
+            "documentation": "https://docs.langflow.org/chat-input-and-output",
+            "edited": false,
+            "field_order": [
+              "input_value",
+              "should_store_message",
+              "sender",
+              "sender_name",
+              "session_id",
+              "context_id",
+              "data_template",
+              "clean_data"
+            ],
+            "frozen": false,
+            "icon": "MessagesSquare",
+            "legacy": false,
+            "metadata": {
+              "code_hash": "0aab1c78e1dc",
+              "dependencies": {
+                "dependencies": [
+                  {
+                    "name": "orjson",
+                    "version": "3.11.9"
+                  },
+                  {
+                    "name": "fastapi",
+                    "version": "0.139.2"
+                  },
+                  {
+                    "name": "lfx",
+                    "version": null
+                  }
+                ],
+                "total_dependencies": 3
+              },
+              "module": "lfx.components.input_output.chat_output.ChatOutput"
+            },
+            "minimized": true,
+            "output_types": [],
+            "outputs": [
+              {
+                "allows_loop": false,
+                "cache": true,
+                "display_name": "Output Message",
+                "group_outputs": false,
+                "method": "message_response",
+                "name": "message",
+                "selected": "Message",
+                "tool_mode": true,
+                "types": [
+                  "Message"
+                ],
+                "value": "__UNDEFINED__"
+              }
+            ],
+            "pinned": false,
+            "template": {
+              "_type": "Component",
+              "clean_data": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Basic Clean Data",
+                "dynamic": false,
+                "info": "Whether to clean data before converting to string.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "clean_data",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "bool",
+                "value": true
+              },
+              "code": {
+                "advanced": true,
+                "api_editable": false,
+                "dynamic": true,
+                "fileTypes": [],
+                "file_path": "",
+                "info": "",
+                "list": false,
+                "load_from_db": false,
+                "multiline": true,
+                "name": "code",
+                "password": false,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "type": "code",
+                "value": "from collections.abc import Generator\nfrom typing import Any\n\nimport orjson\nfrom fastapi.encoders import jsonable_encoder\n\nfrom lfx.base.io.chat import ChatComponent\nfrom lfx.helpers.data import safe_convert\nfrom lfx.inputs.inputs import BoolInput, DropdownInput, HandleInput, MessageTextInput\nfrom lfx.schema.data import Data\nfrom lfx.schema.dataframe import DataFrame\nfrom lfx.schema.message import Message\nfrom lfx.schema.properties import Source\nfrom lfx.template.field.base import Output\nfrom lfx.utils.constants import (\n    MESSAGE_SENDER_AI,\n    MESSAGE_SENDER_NAME_AI,\n    MESSAGE_SENDER_USER,\n)\n\n\nclass ChatOutput(ChatComponent):\n    display_name = \"Chat Output\"\n    description = \"Display a chat message in the Playground.\"\n    documentation: str = \"https://docs.langflow.org/chat-input-and-output\"\n    icon = \"MessagesSquare\"\n    name = \"ChatOutput\"\n    minimized = True\n\n    inputs = [\n        HandleInput(\n            name=\"input_value\",\n            display_name=\"Inputs\",\n            info=\"Message to be passed as output.\",\n            input_types=[\"Data\", \"JSON\", \"DataFrame\", \"Table\", \"Message\"],\n            required=True,\n        ),\n        BoolInput(\n            name=\"should_store_message\",\n            display_name=\"Store Messages\",\n            info=\"Store the message in the history.\",\n            value=True,\n            advanced=True,\n        ),\n        DropdownInput(\n            name=\"sender\",\n            display_name=\"Sender Type\",\n            options=[MESSAGE_SENDER_AI, MESSAGE_SENDER_USER],\n            value=MESSAGE_SENDER_AI,\n            advanced=True,\n            info=\"Type of sender.\",\n        ),\n        MessageTextInput(\n            name=\"sender_name\",\n            display_name=\"Sender Name\",\n            info=\"Name of the sender.\",\n            value=MESSAGE_SENDER_NAME_AI,\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"session_id\",\n            display_name=\"Session ID\",\n            info=\"The session ID of the chat. If empty, the current session ID parameter will be used.\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"context_id\",\n            display_name=\"Context ID\",\n            info=\"The context ID of the chat. Adds an extra layer to the local memory.\",\n            value=\"\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"data_template\",\n            display_name=\"Data Template\",\n            value=\"{text}\",\n            advanced=True,\n            info=\"Template to convert Data to Text. If left empty, it will be dynamically set to the Data's text key.\",\n        ),\n        BoolInput(\n            name=\"clean_data\",\n            display_name=\"Basic Clean Data\",\n            value=True,\n            advanced=True,\n            info=\"Whether to clean data before converting to string.\",\n        ),\n    ]\n    outputs = [\n        Output(\n            display_name=\"Output Message\",\n            name=\"message\",\n            method=\"message_response\",\n        ),\n    ]\n\n    def _build_source(self, id_: str | None, display_name: str | None, source: str | None) -> Source:\n        source_dict = {}\n        if id_:\n            source_dict[\"id\"] = id_\n        if display_name:\n            source_dict[\"display_name\"] = display_name\n        if source:\n            # Handle case where source is a ChatOpenAI object\n            if hasattr(source, \"model_name\"):\n                source_dict[\"source\"] = source.model_name\n            elif hasattr(source, \"model\"):\n                source_dict[\"source\"] = str(source.model)\n            else:\n                source_dict[\"source\"] = str(source)\n        return Source(**source_dict)\n\n    async def message_response(self) -> Message:\n        # First convert the input to string if needed\n        text = self.convert_to_string()\n\n        # Get source properties\n        source, _, display_name, source_id = self.get_properties_from_source_component()\n\n        # Create or use existing Message object\n        if isinstance(self.input_value, Message) and not self.is_connected_to_chat_input():\n            message = self.input_value\n            # Update message properties\n            message.text = text\n            # Preserve existing session_id from the incoming message if it exists\n            existing_session_id = message.session_id\n        else:\n            message = Message(text=text)\n            existing_session_id = None\n\n        # Set message properties\n        message.sender = self.sender\n        message.sender_name = self.sender_name\n        # Preserve session_id from incoming message, or use component/graph session_id\n        message.session_id = (\n            self.session_id or existing_session_id or (self.graph.session_id if hasattr(self, \"graph\") else None) or \"\"\n        )\n        message.context_id = self.context_id\n        message.flow_id = self.graph.flow_id if hasattr(self, \"graph\") else None\n        message.properties.source = self._build_source(source_id, display_name, source)\n\n        # Store message if needed\n        if message.session_id and self.should_store_message:\n            stored_message = await self.send_message(message)\n            self.message.value = stored_message\n            message = stored_message\n\n        # Set accumulated token usage from all upstream LLM vertices.\n        # This must happen AFTER send_message() because streaming captures\n        # usage from chunks and would overwrite accumulated totals.\n        if hasattr(self, \"_vertex\") and self._vertex is not None:\n            accumulated_usage = self._vertex._accumulate_upstream_token_usage()  # noqa: SLF001\n            if accumulated_usage:\n                message.properties.usage = accumulated_usage\n                if self.should_store_message and message.get_id():\n                    message = await self._update_stored_message(message)\n                    await self._send_message_event(message, id_=message.get_id())\n\n        self.status = message\n        return message\n\n    def _serialize_data(self, data: Data) -> str:\n        \"\"\"Serialize Data object to JSON string.\"\"\"\n        # Convert data.data to JSON-serializable format\n        serializable_data = jsonable_encoder(data.data)\n        # Serialize with orjson, enabling pretty printing with indentation\n        json_bytes = orjson.dumps(serializable_data, option=orjson.OPT_INDENT_2)\n        # Convert bytes to string and wrap in Markdown code blocks\n        return \"```json\\n\" + json_bytes.decode(\"utf-8\") + \"\\n```\"\n\n    def _validate_input(self) -> None:\n        \"\"\"Validate the input data and raise ValueError if invalid.\"\"\"\n        if self.input_value is None:\n            msg = \"Input data cannot be None\"\n            raise ValueError(msg)\n        if isinstance(self.input_value, list) and not all(\n            isinstance(item, Message | Data | DataFrame | str) for item in self.input_value\n        ):\n            invalid_types = [\n                type(item).__name__\n                for item in self.input_value\n                if not isinstance(item, Message | Data | DataFrame | str)\n            ]\n            msg = f\"Expected Data or DataFrame or Message or str, got {invalid_types}\"\n            raise TypeError(msg)\n        if not isinstance(\n            self.input_value,\n            Message | Data | DataFrame | str | list | Generator | type(None),\n        ):\n            type_name = type(self.input_value).__name__\n            msg = f\"Expected Data or DataFrame or Message or str, Generator or None, got {type_name}\"\n            raise TypeError(msg)\n\n    def convert_to_string(self) -> str | Generator[Any, None, None]:\n        \"\"\"Convert input data to string with proper error handling.\"\"\"\n        self._validate_input()\n        clean_data: bool = getattr(self, \"clean_data\", False)\n        if isinstance(self.input_value, list):\n            return \"\\n\".join([safe_convert(item, clean_data=clean_data) for item in self.input_value])\n        if isinstance(self.input_value, Generator):\n            return self.input_value\n        return safe_convert(self.input_value, clean_data=clean_data)\n"
+              },
+              "context_id": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Context ID",
+                "dynamic": false,
+                "info": "The context ID of the chat. Adds an extra layer to the local memory.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "context_id",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "data_template": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Data Template",
+                "dynamic": false,
+                "info": "Template to convert Data to Text. If left empty, it will be dynamically set to the Data's text key.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "data_template",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": "{text}"
+              },
+              "input_value": {
+                "_input_type": "HandleInput",
+                "advanced": false,
+                "api_editable": false,
+                "display_name": "Inputs",
+                "dynamic": false,
+                "info": "Message to be passed as output.",
+                "input_types": [
+                  "Data",
+                  "JSON",
+                  "DataFrame",
+                  "Table",
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "input_value",
+                "override_skip": false,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "other",
+                "value": ""
+              },
+              "sender": {
+                "_input_type": "DropdownInput",
+                "advanced": true,
+                "api_editable": false,
+                "combobox": false,
+                "dialog_inputs": {},
+                "display_name": "Sender Type",
+                "dynamic": false,
+                "external_options": {},
+                "info": "Type of sender.",
+                "name": "sender",
+                "options": [
+                  "Machine",
+                  "User"
+                ],
+                "options_metadata": [],
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "toggle": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "str",
+                "value": "Machine"
+              },
+              "sender_name": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Sender Name",
+                "dynamic": false,
+                "info": "Name of the sender.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "sender_name",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": "AI"
+              },
+              "session_id": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Session ID",
+                "dynamic": false,
+                "info": "The session ID of the chat. If empty, the current session ID parameter will be used.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "session_id",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "should_store_message": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "api_editable": false,
+                "display_name": "Store Messages",
+                "dynamic": false,
+                "info": "Store the message in the history.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "should_store_message",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "bool",
+                "value": false
+              }
+            },
+            "tool_mode": false
+          },
+          "selected_output": "message"
+        }
+      },
+      {
+        "id": "note-lwwxi",
+        "type": "noteNode",
+        "position": {
+          "x": 0,
+          "y": -480
+        },
+        "style": {
+          "width": 620,
+          "height": 600
+        },
+        "width": 620,
+        "height": 600,
+        "measured": {
+          "width": 620,
+          "height": 600
+        },
+        "resizing": false,
+        "dragging": false,
+        "data": {
+          "id": "note-lwwxi",
+          "type": "note",
+          "node": {
+            "description": "## SIGAP · fetch_shelters\n\nMembaca data posko yang sudah tersimpan di Google Sheets atau CSV.\n\nDipanggil saat memulai sesi baru atau ketika petugas ingin mengecek posko aktif saat ini.\n\n### Panduan sesuai README\n\nRead-back write: action=all + expected_snapshot_id/expected_snapshot_sha256 dari receipt efektif writer. verification.status harus verified untuk menyatakan aksi sesuai. mismatch mencetak differences meski jumlah rows cocok. Tanpa expected ref: not_requested. Filter tidak cocok berbeda dari sumber kosong.",
+            "display_name": "",
+            "documentation": "",
+            "template": {
+              "backgroundColor": "amber"
+            }
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "reactflow__edge-ChatInput-2ZT7h{œdataTypeœ:œChatInputœ,œidœ:œChatInput-2ZT7hœ,œnameœ:œmessageœ,œoutput_typesœ:[œMessageœ]}-LogisticsStorageReader-WimDg{œfieldNameœ:œqueryœ,œidœ:œLogisticsStorageReader-WimDgœ,œinputTypesœ:[œMessageœ],œtypeœ:œstrœ}",
+        "source": "ChatInput-2ZT7h",
+        "target": "LogisticsStorageReader-WimDg",
+        "sourceHandle": "{œdataTypeœ: œChatInputœ, œidœ: œChatInput-2ZT7hœ, œnameœ: œmessageœ, œoutput_typesœ: [œMessageœ]}",
+        "targetHandle": "{œfieldNameœ: œqueryœ, œidœ: œLogisticsStorageReader-WimDgœ, œinputTypesœ: [œMessageœ], œtypeœ: œstrœ}",
+        "data": {
+          "sourceHandle": {
+            "dataType": "ChatInput",
+            "id": "ChatInput-2ZT7h",
+            "name": "message",
+            "output_types": [
+              "Message"
+            ]
+          },
+          "targetHandle": {
+            "fieldName": "query",
+            "id": "LogisticsStorageReader-WimDg",
+            "inputTypes": [
+              "Message"
+            ],
+            "type": "str"
+          }
+        },
+        "animated": false,
+        "className": "",
+        "selected": false
+      },
+      {
+        "id": "reactflow__edge-LogisticsStorageReader-WimDg{œdataTypeœ:œLogisticsStorageReaderœ,œidœ:œLogisticsStorageReader-WimDgœ,œnameœ:œshelter_recordsœ,œoutput_typesœ:[œMessageœ]}-ChatOutput-NlZ3f{œfieldNameœ:œinput_valueœ,œidœ:œChatOutput-NlZ3fœ,œinputTypesœ:[œDataœ,œJSONœ,œDataFrameœ,œTableœ,œMessageœ],œtypeœ:œotherœ}",
+        "source": "LogisticsStorageReader-WimDg",
+        "target": "ChatOutput-NlZ3f",
+        "sourceHandle": "{œdataTypeœ: œLogisticsStorageReaderœ, œidœ: œLogisticsStorageReader-WimDgœ, œnameœ: œshelter_recordsœ, œoutput_typesœ: [œMessageœ]}",
+        "targetHandle": "{œfieldNameœ: œinput_valueœ, œidœ: œChatOutput-NlZ3fœ, œinputTypesœ: [œDataœ, œJSONœ, œDataFrameœ, œTableœ, œMessageœ], œtypeœ: œotherœ}",
+        "data": {
+          "sourceHandle": {
+            "dataType": "LogisticsStorageReader",
+            "id": "LogisticsStorageReader-WimDg",
+            "name": "shelter_records",
+            "output_types": [
+              "Message"
+            ]
+          },
+          "targetHandle": {
+            "fieldName": "input_value",
+            "id": "ChatOutput-NlZ3f",
+            "inputTypes": [
+              "Data",
+              "JSON",
+              "DataFrame",
+              "Table",
+              "Message"
+            ],
+            "type": "other"
+          }
+        },
+        "animated": false,
+        "className": "",
+        "selected": false
+      }
+    ],
+    "viewport": {
+      "x": 40,
+      "y": 60,
+      "zoom": 0.7
+    }
+  },
+  "endpoint_name": "fetch_shelters",
+  "mcp_enabled": true,
+  "action_name": "fetch_shelters",
+  "action_description": "Mengambil data posko yang sudah tersimpan di Google Sheets rekap atau file CSV lokal. Input: teks JSON {action:all} untuk semua, atau {action:filter,term:nama/desa}. Verifikasi write menambahkan expected_snapshot_id/expected_snapshot_sha256 dari receipt efektif. Dipanggil di awal sesi baru untuk mengecek posko yang aktif atau kondisi terkini sebelum memproses laporan baru. Output SIGAP_READ_RESULT: sumber, total/matched_shelters, verification_status (verified/mismatch/not_requested), data dan referensi read-back. No_matches bukan sheet kosong; jumlah baris saja bukan bukti clear diterapkan. JANGAN dipanggil untuk menyimpan, memperbarui, atau menghapus data posko.",
+  "source_template_version": "1.12.4",
+  "build_mode": "offline",
+  "runtime_validation": "pending"
+}

@@ -1,0 +1,38 @@
+# Python and test caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.deepeval/
+.mypy_cache/
+.agents/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Web dependencies and build output
+node_modules/
+dist/
+.next/
+coverage/
+*.tsbuildinfo
+
+# Local secrets and runtime state
+.env
+.env.*
+!.env.example
+output/*
+!output/.gitkeep
+backend/output/*
+!backend/output/.gitkeep
+.sigap_snapshots/
+*.log
+backend/data/*
+!backend/data/.gitkeep
+AGENTS.md
+docs/
+
+# OS files
+Thumbs.db
+.DS_Store
