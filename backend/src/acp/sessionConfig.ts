@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { findExecutable } from './process.js';
 import type { AgentSessionConfig } from './types.js';
 
-function loadSystemPrompt(provider: 'bob' | 'gemini'): string {
+function loadSystemPrompt(provider: 'bob' | 'gemini' | 'openai'): string {
   const candidates = [
     // Local dev: ../../../mcp (c:/.../backend/src/acp -> c:/.../mcp)
     fileURLToPath(new URL(`../../../mcp/${provider}_agent_instructions.md`, import.meta.url)),
@@ -24,7 +24,7 @@ function loadSystemPrompt(provider: 'bob' | 'gemini'): string {
   throw new Error(`Instruksi agen '${provider}_agent_instructions.md' tidak ditemukan.`);
 }
 
-export function loadAgentSessionConfig(provider: 'bob' | 'gemini' = 'bob'): Partial<AgentSessionConfig> {
+export function loadAgentSessionConfig(provider: 'bob' | 'gemini' | 'openai' = 'bob'): Partial<AgentSessionConfig> {
   const systemPrompt = loadSystemPrompt(provider);
   let rawServers: Record<string, any> = {};
 
@@ -39,7 +39,7 @@ export function loadAgentSessionConfig(provider: 'bob' | 'gemini' = 'bob'): Part
     };
   } else {
     const localPath = fileURLToPath(new URL('../../data/langflow-mcp.local.json', import.meta.url));
-    const path = process.env.SIGAP_MCP_CONFIG_PATH || (provider === 'gemini' && existsSync(localPath) ? localPath : undefined);
+    const path = process.env.SIGAP_MCP_CONFIG_PATH || (provider !== 'bob' && existsSync(localPath) ? localPath : undefined);
     if (!path) return { systemPrompt, mcpServerConfig: [] };
     const data = JSON.parse(readFileSync(resolve(path), 'utf8'));
     if (/GANTI_DENGAN_/.test(JSON.stringify(data))) throw new Error('Konfigurasi MCP masih berisi placeholder.');
@@ -61,7 +61,7 @@ export function loadAgentSessionConfig(provider: 'bob' | 'gemini' = 'bob'): Part
       } catch {}
       const url = new URL(serverUrl);
       if(!['http:', 'https:'].includes(url.protocol))throw new Error('URL MCP HTTP tidak valid.');
-      if(provider === 'gemini' && !['localhost','127.0.0.1','[::1]','host.docker.internal'].includes(url.hostname))throw new Error('MCP Gemini saat ini hanya mendukung loopback.');
+      if(provider !== 'bob' && !['localhost','127.0.0.1','[::1]','host.docker.internal'].includes(url.hostname))throw new Error('MCP LLM saat ini hanya mendukung loopback.');
       if(Object.values(value.headers || {}).some(header=>typeof header!=='string'))throw new Error('Header MCP harus string.');
       return { type: value.type === 'sse' ? 'sse' : 'http', name, url: serverUrl, headers: Object.entries(value.headers || {}).map(([name, value]) => ({ name, value })) };
     }

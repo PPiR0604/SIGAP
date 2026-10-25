@@ -11,13 +11,15 @@ Cara pakai di Langflow: New Custom Component -> tempel seluruh isi file ini.
 
 from __future__ import annotations
 
+from sigap_sqlite import read_sqlite, compare_stored
+
 import json
 import re
 from datetime import datetime, timedelta, timezone
 from sigap_contracts import save_snapshot, load_snapshot, normalize_stock, load_source, load_source_context, get_correction_record, get_correction_base, get_candidate_record, clear_options, quality_status
 
 from lfx.custom.custom_component.component import Component
-from lfx.io import MessageTextInput, Output
+from lfx.io import MessageTextInput, Output, StrInput
 from lfx.schema.message import Message
 
 NUMERIC_FIELDS = [
@@ -200,6 +202,9 @@ def validate(llm_output: str, source_text: str) -> dict:
         clean = dict(rec)
         clean.pop("update_target", None)  # Target berasal dari sumber server, bukan model.
         clean.pop("candidate_lineage", None)  # Pasangan identitas hanya dari kandidat immutable server.
+        clean.pop('storage_baseline',None)  # Baseline/konflik hanya dihasilkan pembacaan SQLite server.
+        clean.pop('storage_conflicts',None)
+        clean.pop('storage_source',None)
         header = next((m.group(0) for m in REPORT_HEADER.finditer(source_text) if m.group(1) == rid), "")
         timestamp = re.search(r"waktu=([^|\n]+)", header)
         clean["reported_at"] = timestamp.group(1).strip() if timestamp and timestamp.group(1).strip() != "tidak diketahui" else None
@@ -423,14 +428,23 @@ def build_snapshots(records, sources):
     return list(snapshots.values())
 
 
-def merge_correction(records, target, base=None, candidate=False):
+def merge_correction(records, target, base=None, candidate=False, source_text=""):
     """Gabungkan hanya patch tervalidasi ke baris read-back yang dipilih."""
     if len(records) != 1:
         raise ValueError("Koreksi harus menghasilkan tepat satu laporan untuk satu posko.")
     old = get_candidate_record(target) if candidate else get_correction_record(target)
     patch = records[0]
     normalize = lambda s: " ".join(w for w in re.findall(r"[a-z0-9]+", str(s or "").lower()) if w not in {"posko", "pengungsian"})
-    if normalize(patch.get("shelter_name")) != normalize(old.get("shelter_name")):
+    # A rename must be explicit in the immutable human source, never supplied as an LLM target.
+    rename_matches = list(re.finditer(r"\b(?:ubah|ganti|koreksi)\s+nama\s+posko(?:\s+ini)?\s+(?:menjadi|jadi|ke)\s+([^.!?\n|]+)", source_text, re.I))
+    if len(rename_matches) > 1:
+        raise ValueError("Ada beberapa usulan nama posko; pilih satu nama yang pasti.")
+    new_name = rename_matches[0].group(1).strip(' \t\"\'“”') if rename_matches else None
+    if new_name is not None and (not new_name or len(new_name)>200):
+        raise ValueError("Nama posko baru kosong atau terlalu panjang.")
+    accepted_names = {normalize(old.get("shelter_name"))}
+    if new_name: accepted_names.add(normalize(new_name))
+    if normalize(patch.get("shelter_name")) not in accepted_names:
         raise ValueError("Nama posko koreksi tidak cocok dengan baris asal.")
     columns = {"total_people": "jumlah_jiwa", "total_families": "jumlah_kk", "male": "laki_laki", "female": "perempuan", "infants_toddlers": "bayi_balita", "children": "anak", "elderly": "lansia", "pregnant": "ibu_hamil", "breastfeeding": "ibu_menyusui", "disability": "disabilitas"}
     update_target = {key: old.get(key) or "" for key in ("batch_id", "report_id", "shelter_name", "village", "disaster_id", "shelter_id")}
@@ -466,6 +480,10 @@ def merge_correction(records, target, base=None, candidate=False):
         merged["candidate_lineage"] = lineage
     changed = set()
     provenance = merged.setdefault("field_provenance", {})
+    if new_name:
+        merged["shelter_name"] = new_name
+        changed.add("shelter_name")
+        provenance["shelter_name"] = {"report_id":patch["report_id"],"reported_at":patch.get("reported_at"),"source_excerpt":rename_matches[0].group(0)}
     for field in NUMERIC_FIELDS:
         if patch.get(field) is not None:
             merged[field] = patch[field]
@@ -610,6 +628,7 @@ class ShelterReportValidator(Component):
     name = "ShelterReportValidator"
 
     inputs = [
+        StrInput(name='sqlite_path',display_name='Database Rekap SQLite',value='',advanced=True,info='Path rekap yang sama dengan reader/writer untuk memeriksa konflik.'),
         MessageTextInput(
             name="payload",
             display_name="Payload (Referensi Sumber + Records)",
@@ -676,7 +695,7 @@ class ShelterReportValidator(Component):
         if source_context.get("candidate_target"):
             try:
                 target = source_context["candidate_target"]
-                patched = merge_correction(result["snapshot_records"], target, candidate=True)[0]
+                patched = merge_correction(result["snapshot_records"], target, candidate=True, source_text=source_text)[0]
                 snapshot = load_snapshot({k: target[k] for k in ("snapshot_id", "snapshot_sha256")})
                 result["snapshot_records"] = json.loads(json.dumps(snapshot["records"]))
                 result["snapshot_records"][target["record_index"]] = patched
@@ -687,9 +706,16 @@ class ShelterReportValidator(Component):
                 return Message(text=f"GAGAL: kandidat tidak dapat dikoreksi ({exc}). Pilih kandidat terbaru.")
         elif source_context.get("correction_target"):
             try:
-                result["snapshot_records"] = merge_correction(result["snapshot_records"], source_context["correction_target"], source_context.get("correction_base"))
+                result["snapshot_records"] = merge_correction(result["snapshot_records"], source_context["correction_target"], source_context.get("correction_base"), source_text=source_text)
             except (ValueError, OSError, KeyError, TypeError) as exc:
                 return Message(text=f"GAGAL: koreksi tidak dapat dipasangkan ke baris asal ({exc}). Baca ulang rekap dan pilih target yang benar.")
+        try:
+            stored = read_sqlite(getattr(self,'sqlite_path',None))
+            result['snapshot_records'] = compare_stored(result['snapshot_records'], stored)
+            for record in result['snapshot_records']:
+                record['storage_source']={'mode':'sqlite','path':stored['path']}
+        except Exception as exc:
+            return Message(text=f'GAGAL: rekap SQLite belum dapat dibandingkan ({exc}). Tidak menerbitkan kandidat tanpa pemeriksaan konflik.')
         result["snapshot_issues"] = []
         for record in result["snapshot_records"]:
             for issue in record.get("validation_issues",[]):

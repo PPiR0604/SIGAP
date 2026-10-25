@@ -1,17 +1,36 @@
 # SIGAP Backend Service
 
-Layanan backend lokal (Node.js 22+ / Fastify / TypeScript) yang menghubungkan **SIGAP Web Workspace** ke **Gemini API** dan **Langflow MCP**. Adapter Bob ACP tetap tersedia sebagai pilihan provider.
+Pembaruan rekap SQLite dan impor CSV: [panduan migrasi](../langflow/SQLITE_MIGRATION.md). Backend tetap menyimpan metadata sesi/persetujuan, sementara database rekap dikelola Langflow melalui MCP. Keputusan konflik per field terikat ke snapshot/hash sebelum writer dijalankan.
+
+Layanan backend lokal (Node.js 22+ / Fastify / TypeScript) yang menghubungkan **SIGAP Web Workspace** ke **endpoint LLM kompatibel OpenAI / Gemini** dan **Langflow MCP**. Adapter Bob ACP tetap tersedia sebagai pilihan provider.
+
+Seluruh konfigurasi model dikelola di **`.env` pada root repositori**. Backend native memuat file ini tanpa bergantung pada folder kerja, sedangkan Docker memuat file yang sama melalui `env_file`. File JSON konfigurasi model lama tidak lagi dibaca.
+
+```dotenv
+SIGAP_AGENT_PROVIDER=openai
+SIGAP_OPENAI_BASE_URL=http://localhost:20128/v1
+SIGAP_OPENAI_MODEL=gemini/gemini-3.5-flash-lite(medium)
+SIGAP_OPENAI_API_KEY=ISI_KEY_PROXY_LOKAL
+```
+
+Untuk mengganti model melalui proxy yang sama, cukup ubah `SIGAP_OPENAI_MODEL`. Untuk Gemini API langsung, pilih provider `gemini` lalu isi `GEMINI_API_KEY`, `GEMINI_MODEL`, dan opsional `SIGAP_GEMINI_TPM_LIMIT` pada file `.env` yang sama. `.env` diabaikan Git; `.env.example` menjadi template tanpa kredensial. Variabel environment yang sudah disetel pada proses native mengikuti prioritas standar Node.
+
+Akhiran reasoning seperti `(medium)` tetap disimpan dalam satu variabel model. Transport mengirim `model=gemini/gemini-3.5-flash-lite` dan `reasoning_effort=medium` secara terpisah karena proxy menolak akhiran tersebut sebagai nama model. Akhiran yang dikenali: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`; dukungan tiap tingkat mengikuti provider. Model tanpa akhiran tidak mendapat parameter reasoning tambahan.
+
+Panggilan model melalui proxy memiliki batas 120 detik (termasuk satu retry jika HTTP 503). Keseluruhan operasi tetap dibatasi 5 menit; pembatalan operasi dapat menghentikan request lebih awal. Pengaman idle frontend memberi jeda hingga 5 menit 30 detik agar tidak menandai timeout sebelum backend menyelesaikan operasi.
+
+Setelah mengubah `.env`, jalankan `docker compose up -d --force-recreate --no-deps --wait backend`. Backend native cukup dimulai ulang. Docker otomatis memetakan endpoint localhost ke `host.docker.internal`. API key hanya dibaca backend; token sesi UI tetap otomatis. Provider kompatibel OpenAI memakai gerbang tool, sumber, snapshot dan persetujuan yang sama, tanpa fallback otomatis ke provider lain.
 
 ---
 
 ## 1. Arsitektur & Alur Data
 
 ```text
-[Web Workspace] <--(HTTP + SSE)--> [Backend SIGAP] <--(API)--> [Gemini]
+[Web Workspace] <--(HTTP + SSE)--> [Backend SIGAP] <--(API)--> [LLM]
                                       |
                                   MCP HTTP
                                       |
-                                  [Langflow] <--> [CSV / Sheets]
+                                  [Langflow] <--> [SQLite rekap]
 ```
 
 ### Pemisahan Tanggung Jawab
@@ -29,6 +48,14 @@ Layanan backend lokal (Node.js 22+ / Fastify / TypeScript) yang menghubungkan **
 
 ## 2. Cara Menjalankan
 
+### Docker Desktop
+
+Dari root repositori, jalankan `docker compose up -d --build --wait`. Web tersedia di `http://127.0.0.1:5173`.
+
+Metadata backend disimpan di volume Linux `sigap_backend_state`, pada `/app/state/sigap.db`. Folder `backend/data` dipasang read-only untuk konfigurasi lokal; database Windows di folder itu tidak digunakan oleh container. Hindari membuka satu database SQLite WAL yang sama dari proses Windows dan Linux melalui bind mount. Database rekap posko tetap dikelola Langflow secara terpisah.
+
+Pada perbaikan 22 Oktober, metadata lama dicadangkan secara konsisten, diperiksa integritasnya, lalu disalin ke volume baru dengan jumlah baris yang sama. Lokasi backup tercatat di `output/testing/docker-sqlite-backup-path.txt`; file sumber Windows tetap disimpan. `scripts/backup-metadata.ts` membuat backup portabel termasuk transaksi WAL, sedangkan `scripts/import-docker-state.ts` hanya menerima tujuan yang belum berisi database. Hentikan penulis sebelum memindahkan database antar sistem operasi; jangan menyalin file `.db` aktif tanpa jurnalnya. Volume tersebut berisi riwayat aplikasi dan harus dipertahankan saat membuat ulang container.
+
 ### Persyaratan
 - Node.js >= 22 (direkomendasikan v22 atau v24).
 
@@ -42,13 +69,7 @@ npm start
 Server akan mengikat ke `http://127.0.0.1:8787`.
 Token sesi lokal otomatis dibuat dan disimpan di `backend/data/session-token.txt`.
 
-Default provider adalah Gemini. Isi file lokal **yang diabaikan Git** `backend/data/gemini.local.json`:
-
-```json
-{"apiKey":"KEY_GEMINI_ANDA","model":"gemini-3.8-flash"}
-```
-
-Alternatif: set `GEMINI_API_KEY` dan `GEMINI_MODEL` di environment backend. Environment mengalahkan file lokal; string key kosong secara eksplisit menonaktifkan ketersediaan. `SIGAP_GEMINI_CONFIG_PATH` dapat menunjuk file lain. Restart backend setelah mengubah key/model. Tidak ada key di frontend atau VITE_*. File `.env.example` adalah template dan tidak dimuat otomatis.
+Konfigurasi provider/model dibaca dari `.env` root seperti contoh di atas. Jangan menyimpan API key dalam frontend atau variabel `VITE_*`. Salin `.env.example` ke `.env` pada instalasi baru; model tidak lagi memakai `gemini.local.json` atau `openai.local.json`.
 
 MCP Gemini membaca `SIGAP_MCP_CONFIG_PATH` atau file lokal `backend/data/langflow-mcp.local.json` secara default. URL klien MCP ini dibatasi loopback. Untuk menguji koneksi dan preview sintetis:
 
@@ -59,6 +80,8 @@ npm run smoke:gemini
 ```
 
 Probe hanya initialize/list. Smoke memakai Gemini nyata untuk prepare/validate dan melarang writer, fetch rekap, kalkulasi serta publikasi. Jika key belum diisi, smoke berhenti dengan pesan konfigurasi. [Katalog resmi Gemini](https://ai.google.dev/gemini-api/docs/models) menjadi acuan model; default dapat diganti menurut akses akun.
+
+Jika Gemini mengembalikan HTTP 503, backend mencoba ulang request model sekali dalam batas waktu 60 detik. Panggilan tool yang sudah dijalankan tidak diulang. Jika tetap gagal, event `GEMINI_UNAVAILABLE` menampilkan penyebab spesifik dan mempertahankan sesi serta kandidat sebelumnya; kirim ulang klarifikasi setelah menunggu sebentar. Jika kegagalan terjadi selama penyimpanan, periksa rekap tersimpan terlebih dahulu karena status write bisa belum diketahui. Respons 429, blokir, dan respons kosong tidak dicoba ulang otomatis.
 
 Untuk simulasi tanpa API: `$env:SIGAP_AGENT_PROVIDER='mock'; npm start`. Untuk Bob: pilih `bob` dan isi konfigurasi ACP di bawah. Gemini tanpa key/config tetap degraded/error, tidak berubah menjadi mock.
 
@@ -147,6 +170,14 @@ MCP aktif tidak otomatis membuktikan provider berhasil. Jalur Gemini memerlukan 
 
 ## 7. Penghematan token dan kuota Gemini
 
+Permintaan eksplisit kebutuhan **semua/seluruh desa atau posko** dibaca oleh backend sebagai cakupan seluruh rekap. Backend membaca ulang rekap tersimpan, mengambil kandidat yang masih berlaku, memanggil `calculate_gap` Langflow untuk setiap referensi snapshot, lalu menggabungkan hasil per posko tanpa menghitung rumus sendiri atau meminta model memilih subset. Kandidat terbaru menggantikan nilai posko asal; posko lain tetap ikut dihitung. Jawaban menyebut jumlah posko dan apakah kandidat belum disimpan ikut digunakan. Pembacaan/kalkulasi tidak lengkap ditolak, bukan dilaporkan sebagai seluruh rekap. Permintaan yang khusus menyebut rekap tersimpan tanpa kandidat tetap hanya memakai data tersimpan.
+
+Koreksi kandidat juga diperiksa terhadap snapshot asal: jumlah posko dan record selain target harus tetap sama sebelum kandidat baru diterima. Snapshot yang menghilangkan desa lain ditolak dan kandidat lama tetap berlaku. Tidak ada perubahan pada gerbang persetujuan write.
+
+Setelah validasi koreksi selesai pada mode live, backend otomatis memanggil `calculate_gap` dengan ID/hash snapshot akhir, memverifikasi seluruh posko sumber, lalu mengirim `calculation_ready` sebelum `approval_required`. Perhitungan antara yang dikirim model tidak menggantikan hasil akhir ini. Rumus tetap dijalankan Langflow; tidak memerlukan putaran model atau perintah hitung tambahan. Bila kalkulator gagal atau hasil memakai snapshot/cakupan yang salah, kandidat valid tetap dapat ditinjau dan UI menerima pemberitahuan kegagalan hitung, tanpa hasil hitung lama atau penyimpanan otomatis. Mode mock tetap hanya memberi pratinjau sintetis.
+
+Jika model selesai dengan JSON ekstraksi `{records:[...]}` setelah `prepare_needs` tetapi lupa memanggil `validate_needs`, runtime meneruskan hanya records tersebut ke validator MCP memakai SOURCE_REF milik operasi yang sama. Pemeriksaan izin, batas tool/history dan penolakan validator tetap berlaku; field sumber/persetujuan top-level dari model tidak diteruskan. JSON tanpa sumber terikat tidak memicu tool, dan tidak ada fallback write. Regresi: `tests/extractedValidation.test.ts`.
+
 Penghematan yang aktif secara default:
 
 - **Rekap tersimpan dibaca tanpa model.** Pada pesan pertama sesi, backend memanggil `fetch_shelters` langsung lewat MCP secara paralel dan mengirim hasilnya ke UI (event `stored_rekap_ready`). Model tidak membuat putaran tambahan dan hasil bacanya tidak masuk riwayat.
@@ -158,5 +189,5 @@ Penghematan yang aktif secara default:
 Penjaga kuota per menit:
 
 - Backend mencatat `promptTokenCount` dari tiap respons dalam jendela geser 60 detik. Bila request berikutnya diperkirakan melewati batas, backend menunggu (UI menampilkan "Menunggu kuota token per menit") dan gagal dengan pesan jelas jika harus menunggu lebih dari 50 detik.
-- Batas default 200000 token input per menit. Ubah lewat `tpmLimit` di `backend/data/gemini.local.json` atau `SIGAP_GEMINI_TPM_LIMIT`. Isi `0` untuk mematikan. Sesuaikan dengan batas model pada akun Anda (dashboard AI Studio menampilkan angkanya).
+- Batas default 200000 token input per menit. Ubah lewat `SIGAP_GEMINI_TPM_LIMIT` di `.env` root. Isi `0` untuk mematikan. Sesuaikan dengan batas model pada akun Anda (dashboard AI Studio menampilkan angkanya).
 - Respons 429 dari Gemini kini dilaporkan sebagai `QUOTA_EXCEEDED`, dan sesi serta riwayat sebelumnya tidak dibuang.

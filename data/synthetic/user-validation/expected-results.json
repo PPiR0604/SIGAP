@@ -1,0 +1,159 @@
+{
+  "synthetic": true,
+  "baseline": {
+    "shelters": 8,
+    "total_people": 630,
+    "air_liter_per_hari": 9450,
+    "kkal_per_hari": 1323000
+  },
+  "records": [
+    {
+      "report_id": "R001",
+      "shelter_name": "Posko Cibening",
+      "village": "Cibineng",
+      "total_people": 100,
+      "air_liter_per_hari": 1500,
+      "kkal_per_hari": 210000,
+      "jamban_unit": 5,
+      "ruang_hunian_m2": 350.0,
+      "gap_air_liter_per_hari": 1000,
+      "is_estimate": false,
+      "missing_fields": []
+    },
+    {
+      "report_id": "R002",
+      "shelter_name": "Posko Harapan",
+      "village": "Sukamaju",
+      "total_people": 98,
+      "air_liter_per_hari": 1470,
+      "kkal_per_hari": 205800,
+      "jamban_unit": 5,
+      "ruang_hunian_m2": 343.0,
+      "gap_air_liter_per_hari": 470,
+      "is_estimate": false,
+      "missing_fields": [
+        "disability"
+      ]
+    },
+    {
+      "report_id": "R003",
+      "shelter_name": "Posko Teduh",
+      "village": "Mekarsari",
+      "total_people": 80,
+      "air_liter_per_hari": 1200,
+      "kkal_per_hari": 168000,
+      "jamban_unit": 4,
+      "ruang_hunian_m2": 280.0,
+      "gap_air_liter_per_hari": 0,
+      "is_estimate": false,
+      "missing_fields": []
+    },
+    {
+      "report_id": "R004",
+      "shelter_name": "Posko Melati",
+      "village": "Cisarua",
+      "total_people": 63,
+      "air_liter_per_hari": 945,
+      "kkal_per_hari": 132300,
+      "jamban_unit": 4,
+      "ruang_hunian_m2": 220.5,
+      "gap_air_liter_per_hari": null,
+      "is_estimate": true,
+      "missing_fields": [
+        "male",
+        "female",
+        "infants_toddlers",
+        "elderly",
+        "pregnant",
+        "breastfeeding",
+        "disability"
+      ]
+    },
+    {
+      "report_id": "R005",
+      "shelter_name": "Posko Nusa",
+      "village": "Sukamaju",
+      "total_people": 120,
+      "air_liter_per_hari": 1800,
+      "kkal_per_hari": 252000,
+      "jamban_unit": 6,
+      "ruang_hunian_m2": 420.0,
+      "gap_air_liter_per_hari": null,
+      "is_estimate": false,
+      "missing_fields": []
+    },
+    {
+      "report_id": "R006",
+      "shelter_name": "Posko Pelita",
+      "village": "Cipandan",
+      "total_people": 54,
+      "air_liter_per_hari": 810,
+      "kkal_per_hari": 113400,
+      "jamban_unit": 3,
+      "ruang_hunian_m2": 189.0,
+      "gap_air_liter_per_hari": 810,
+      "is_estimate": false,
+      "missing_fields": []
+    },
+    {
+      "report_id": "R007",
+      "shelter_name": "Posko Harapan",
+      "village": "Cipandan",
+      "total_people": 40,
+      "air_liter_per_hari": 600,
+      "kkal_per_hari": 84000,
+      "jamban_unit": 2,
+      "ruang_hunian_m2": 140.0,
+      "gap_air_liter_per_hari": 500,
+      "is_estimate": false,
+      "missing_fields": []
+    },
+    {
+      "report_id": "R008",
+      "shelter_name": "Posko Mandiri",
+      "village": "Cibineng",
+      "total_people": 75,
+      "air_liter_per_hari": 1125,
+      "kkal_per_hari": 157500,
+      "jamban_unit": 4,
+      "ruang_hunian_m2": 262.5,
+      "gap_air_liter_per_hari": 0,
+      "is_estimate": false,
+      "missing_fields": []
+    }
+  ],
+  "after_new_csv": {
+    "shelters": 10,
+    "total_people": 744
+  },
+  "participant_task_order": {
+    "after_task_3_incoming": {
+      "shelters": 8,
+      "total_people": 638
+    },
+    "after_task_4_csv": {
+      "shelters": 10,
+      "total_people": 752
+    },
+    "after_task_5_both_incoming": {
+      "shelters": 10,
+      "total_people": 760
+    },
+    "after_task_5_both_keep": {
+      "shelters": 10,
+      "total_people": 752
+    }
+  },
+  "after_harapan_population_correction": {
+    "total_people": 102,
+    "male": 47,
+    "female": 55,
+    "air_liter_per_hari": 1530
+  },
+  "after_cibening_population_correction": {
+    "total_people": 104,
+    "male": 57,
+    "female": 47,
+    "air_liter_per_hari": 1560
+  }
+}

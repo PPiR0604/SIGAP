@@ -5,7 +5,7 @@ import { randomBytes } from 'node:crypto';
 import { logger } from './logging.js';
 
 const configSchema = z.object({
-  agentProvider: z.enum(['gemini', 'bob', 'mock']).default('gemini'),
+  agentProvider: z.enum(['gemini', 'openai', 'bob', 'mock']).default('gemini'),
   host: z.string().default('127.0.0.1'),
   port: z.coerce.number().default(8787),
   allowedOrigins: z.array(z.string()).default(['http://127.0.0.1:5173', 'http://localhost:5173']),
@@ -21,19 +21,16 @@ const configSchema = z.object({
 });
 
 export type AppConfig = Omit<z.infer<typeof configSchema>, 'agentProvider'> & {
-  agentProvider?: 'gemini' | 'bob' | 'mock';
+  agentProvider?: 'gemini' | 'openai' | 'bob' | 'mock';
   sessionToken: string;
 };
 
 import { fileURLToPath } from 'node:url';
 
 export function autoLoadEnv(): void {
-  const candidates = [
-    resolve(process.cwd(), '.env'),
-    resolve(process.cwd(), '../.env'),
-    resolve(dirname(fileURLToPath(import.meta.url)), '../../../.env'),
-    resolve(dirname(fileURLToPath(import.meta.url)), '../../.env')
-  ];
+  // Native scripts always load the repository root .env, regardless of cwd.
+  // Docker receives the same file through Compose env_file.
+  const candidates = [fileURLToPath(new URL('../../.env',import.meta.url))];
   for (const p of candidates) {
     if (existsSync(p)) {
       try {

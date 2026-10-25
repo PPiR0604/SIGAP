@@ -319,7 +319,7 @@ export class SigapRepository {
   getReviewSnapshots(sessionId: string): SnapshotRecord[] {
     return this.db.prepare(`SELECT s.* FROM snapshots s JOIN batches b ON b.batch_id = s.batch_id
       WHERE b.session_id = ? AND b.status = 'ready_for_review' AND s.superseded_by IS NULL
-        AND s.expires_at > ? ORDER BY s.created_at DESC`).all(sessionId, new Date().toISOString()) as unknown as SnapshotRecord[];
+          AND s.expires_at > ? ORDER BY s.created_at DESC, s.rowid DESC`).all(sessionId, new Date().toISOString()) as unknown as SnapshotRecord[];
   }
 
   supersedeSnapshot(snapshotId: string, newSnapshotId: string): void {

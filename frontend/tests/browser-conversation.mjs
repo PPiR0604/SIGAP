@@ -72,7 +72,7 @@ try {
   const version=await review().locator('.muted').textContent();
   for(const text of ['Berapa jiwa?', 'Apa yang perlu diperiksa?', 'Terima kasih']) {
     await send(text);
-    assert.match(await step(),/Tinjau/,'Follow-up must not roll progress backward');
+    assert.equal(await page.locator('.steps').count(),0,'Read-only follow-up hides the report workflow');
     assert.equal(await review().getByRole('button',{name:/Posko Uji/}).count(),1,'Sending preserves the candidate');
     await settled();
     assert.equal(await review().locator('.muted').textContent(),version,'Conversation does not create a candidate version');
@@ -92,8 +92,8 @@ try {
   assert.equal(decisions[1].batchId,messageBatches[4]);assert.equal(decisions[1].snapshot_id,nextId);
   assert.equal(mcp.requests.filter(r=>r.method==='tools/call'&&r.params.name==='sigap_5_upsert_shelter').length,2);
   assert.deepEqual(errors,[]);
-  // Disconnected demo stays at Input even after a message.
+  // Disconnected demo has no report workflow after a chat message.
   await page.unroute('**/api/**');await page.route('**/api/**',route=>route.fulfill({status:503,body:'Disconnected test'}));
-  await page.reload();await send('Halo');assert.match(await step(),/Input/);
-  console.log('PASS: actual backend API; three chats preserve progress/candidate; original approval succeeds; new report and second approval succeed; early SSE keeps correct batch; demo stays at Input.');
+  await page.reload();await send('Halo');assert.equal(await page.locator('.steps').count(),0);
+  console.log('PASS: actual backend API; three chats hide workflow and preserve candidate; original approval succeeds; new report and second approval succeed; early SSE keeps correct batch; demo hides report workflow.');
 } finally {await browser.close();await app.close();repo.close();await mcp.close();}

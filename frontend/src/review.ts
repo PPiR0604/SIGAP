@@ -1,6 +1,6 @@
 export type ClearDecision = '' | 'clear' | 'keep' | 'defer';
 export function validateReportFile(name: string, size: number) {
-  if (!name.toLowerCase().endsWith('.txt')) throw new Error('Gunakan file laporan .txt.');
+  if (!/\.(txt|csv)$/i.test(name)) throw new Error('Gunakan file laporan .txt atau .csv.');
   if (size > 200 * 1024) throw new Error('Ukuran laporan maksimal 200 KiB. Bagi menjadi beberapa batch.');
   if (size === 0) throw new Error('File laporan kosong.');
 }

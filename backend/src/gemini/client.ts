@@ -1,6 +1,9 @@
 import {GoogleGenAI,type Content} from '@google/genai';
 import type {McpTool} from '../mcp/httpClient.js';
 import type {GeminiSettings} from './config.js';
+import {logger} from '../logging.js';
+import {setTimeout as delay} from 'node:timers/promises';
+import {GeminiUnavailableError} from './errors.js';
 export interface GeminiTurn {role:'user'|'model';parts:Array<Record<string,unknown>>}
 export interface GeminiUsage {promptTokens:number;outputTokens:number;totalTokens:number;cachedTokens:number;thoughtsTokens:number;toolUsePromptTokens:number}
 export interface GeminiModelClient {
@@ -22,11 +25,22 @@ export class GeminiApiClient implements GeminiModelClient {
   }
   async generate(contents:GeminiTurn[],tools:McpTool[],instruction:string,signal:AbortSignal,onUsage?:(usage:GeminiUsage)=>void):Promise<GeminiTurn>{
     try{
-      const response=await this.sdk.models.generateContent({model:this.settings.model,contents:contents as Content[],config:{
-        systemInstruction:instruction,abortSignal:AbortSignal.any([signal,AbortSignal.timeout(60000)]),
+      const requestSignal=AbortSignal.any([signal,AbortSignal.timeout(60000)]);
+      const request=()=>this.sdk.models.generateContent({model:this.settings.model,contents:contents as Content[],config:{
+        systemInstruction:instruction,abortSignal:requestSignal,
         automaticFunctionCalling:{disable:true},httpOptions:{timeout:60000,retryOptions:{attempts:1}},
         ...(tools.length?{tools:[{functionDeclarations:tools.map(tool=>({name:tool.name,description:slimText(tool.description),parametersJsonSchema:slimSchema(tool.inputSchema)}))}]}:{})
       }});
+      let response:Awaited<ReturnType<typeof request>>|undefined;
+      for(let attempt=0;attempt<2;attempt++){
+        try{response=await request();break;}
+        catch(error){
+          if(Number((error as any)?.status??(error as any)?.code)!==503||attempt===1||requestSignal.aborted)throw error;
+          logger.warn('Gemini temporarily unavailable; retrying model request once',{status:503});
+          await delay(750,undefined,{signal:requestSignal});
+        }
+      }
+      if(!response)throw new Error();
       const meta=response.usageMetadata;
       if(meta&&onUsage){
         // Pencatatan tidak boleh menggagalkan respons yang sudah diterima.
@@ -34,10 +48,15 @@ export class GeminiApiClient implements GeminiModelClient {
           cachedTokens:meta.cachedContentTokenCount??0,thoughtsTokens:meta.thoughtsTokenCount??0,toolUsePromptTokens:meta.toolUsePromptTokenCount??0});}catch{/* diabaikan */}
       }
       const candidate=response.candidates?.[0];
-      if(response.promptFeedback?.blockReason||!candidate?.content?.parts?.length||(candidate.finishReason&&candidate.finishReason!=='STOP'))throw new Error();
+      if(response.promptFeedback?.blockReason||!candidate?.content?.parts?.length||(candidate.finishReason&&candidate.finishReason!=='STOP')){
+        logger.warn('Gemini response incomplete',{finish_reason:candidate?.finishReason,blocked:!!response.promptFeedback?.blockReason,has_parts:!!candidate?.content?.parts?.length});
+        throw new Error();
+      }
       return { ...candidate.content,role:'model',parts:candidate.content.parts } as GeminiTurn;
     }catch(error){
       const status=(error as any)?.status??(error as any)?.code;
+      logger.warn('Gemini request failed',{status:typeof status==='number'||typeof status==='string'?status:'unavailable'});
+      if(Number(status)===503)throw new GeminiUnavailableError();
       if(status===429||/RESOURCE_EXHAUSTED/.test(String((error as any)?.message??'')))throw new Error('Gemini kuota habis atau dibatasi (429).');
       throw new Error('Gemini API gagal, dibatasi, memblokir respons, atau timeout.');
     }

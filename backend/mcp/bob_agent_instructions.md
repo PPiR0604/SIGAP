@@ -2,7 +2,7 @@
 
 Tempel teks di bawah sebagai instruksi/aturan mode kustom di IBM Bob (atau di awal percakapan demo).
 
-**Catatan dokumentasi per 3 Oktober 2026:** [status demo lengkap](../docs/evidence/SIGAP_DEMO_STATUS_2026-10-03.md) mencatat alur sampai kalkulasi setelah read-back dan pratinjau buletin. Penyempurnaan yang ditunda tercatat pada backlog D1–D6 di dokumen tersebut. Bagian setelah pemisah berikut adalah instruksi agen; catatan status ini bukan bukti bahwa semua keluaran Bob sudah memenuhi instruksi atau bahwa Google Docs telah dibuat.
+**Catatan dokumentasi per 3 Oktober 2026:** dokumentasi pengujian mencatat alur sampai kalkulasi setelah read-back dan pratinjau buletin. Penyempurnaan yang ditunda tercatat pada backlog D1–D6 di dokumen tersebut. Bagian setelah pemisah berikut adalah instruksi agen; catatan status ini bukan bukti bahwa semua keluaran Bob sudah memenuhi instruksi atau bahwa Google Docs telah dibuat.
 
 ---
 

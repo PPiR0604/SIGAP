@@ -1,0 +1,760 @@
+{
+  "synthetic": true,
+  "purpose": "Uji pengguna SIGAP, bukan data bencana nyata",
+  "fixture_version": 1,
+  "scenario_date": "2026-10-25",
+  "records": [
+    {
+      "disaster_id": "",
+      "shelter_id": "",
+      "batch_id": "user-validation-2026-10-25",
+      "report_id": "R001",
+      "reported_at": "2026-10-25T00:00",
+      "shelter_name": "Posko Cibening",
+      "village": "Cibineng",
+      "shelter_type": "terkonsentrasi",
+      "total_people": 100,
+      "total_families": 25,
+      "male": 55,
+      "female": 45,
+      "infants_toddlers": 4,
+      "children": 10,
+      "elderly": 7,
+      "pregnant": 1,
+      "breastfeeding": 2,
+      "disability": 0,
+      "urgent_needs": [
+        "air bersih",
+        "beras",
+        "minyak goreng"
+      ],
+      "surplus_do_not_send": [],
+      "notes": "DATA SINTETIS — khusus uji pengguna SIGAP; bukan laporan kejadian nyata.",
+      "stock": {
+        "air_liter_per_hari": 500
+      },
+      "stock_context": {
+        "air_liter_per_hari": {
+          "unit": "L",
+          "recorded_at": "2026-10-25T00:00",
+          "horizon_hours": 24
+        }
+      },
+      "source_report_ids": [
+        "R001"
+      ],
+      "validation_issues": [],
+      "unverified_numbers": [],
+      "stock_issues": [],
+      "notes_history": [],
+      "corrections": [],
+      "pending_clear_fields": [],
+      "is_estimate": false,
+      "missing_fields": [],
+      "validation_status": "LOLOS_PEMERIKSAAN",
+      "field_provenance": {
+        "total_people": {
+          "report_id": "R001",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Cibening, Desa Cibineng: total_people = 100."
+        },
+        "total_families": {
+          "report_id": "R001",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Cibening, Desa Cibineng: total_families = 25."
+        },
+        "male": {
+          "report_id": "R001",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Cibening, Desa Cibineng: male = 55."
+        },
+        "female": {
+          "report_id": "R001",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Cibening, Desa Cibineng: female = 45."
+        },
+        "infants_toddlers": {
+          "report_id": "R001",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Cibening, Desa Cibineng: infants_toddlers = 4."
+        },
+        "children": {
+          "report_id": "R001",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Cibening, Desa Cibineng: children = 10."
+        },
+        "elderly": {
+          "report_id": "R001",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Cibening, Desa Cibineng: elderly = 7."
+        },
+        "pregnant": {
+          "report_id": "R001",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Cibening, Desa Cibineng: pregnant = 1."
+        },
+        "breastfeeding": {
+          "report_id": "R001",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Cibening, Desa Cibineng: breastfeeding = 2."
+        },
+        "disability": {
+          "report_id": "R001",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Cibening, Desa Cibineng: disability = 0."
+        }
+      }
+    },
+    {
+      "disaster_id": "",
+      "shelter_id": "",
+      "batch_id": "user-validation-2026-10-25",
+      "report_id": "R002",
+      "reported_at": "2026-10-25T00:00",
+      "shelter_name": "Posko Harapan",
+      "village": "Sukamaju",
+      "shelter_type": "terkonsentrasi",
+      "total_people": 98,
+      "total_families": 25,
+      "male": 43,
+      "female": 55,
+      "infants_toddlers": 4,
+      "children": 10,
+      "elderly": 12,
+      "pregnant": 1,
+      "breastfeeding": 2,
+      "disability": null,
+      "urgent_needs": [
+        "air bersih",
+        "popok"
+      ],
+      "surplus_do_not_send": [],
+      "notes": "DATA SINTETIS — khusus uji pengguna SIGAP; bukan laporan kejadian nyata.",
+      "stock": {
+        "air_liter_per_hari": 1000
+      },
+      "stock_context": {
+        "air_liter_per_hari": {
+          "unit": "L",
+          "recorded_at": "2026-10-25T00:00",
+          "horizon_hours": 24
+        }
+      },
+      "source_report_ids": [
+        "R002"
+      ],
+      "validation_issues": [],
+      "unverified_numbers": [],
+      "stock_issues": [],
+      "notes_history": [],
+      "corrections": [],
+      "pending_clear_fields": [],
+      "is_estimate": false,
+      "missing_fields": [
+        "disability"
+      ],
+      "validation_status": "PARSIAL",
+      "field_provenance": {
+        "total_people": {
+          "report_id": "R002",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Harapan, Desa Sukamaju: total_people = 98."
+        },
+        "total_families": {
+          "report_id": "R002",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Harapan, Desa Sukamaju: total_families = 25."
+        },
+        "male": {
+          "report_id": "R002",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Harapan, Desa Sukamaju: male = 43."
+        },
+        "female": {
+          "report_id": "R002",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Harapan, Desa Sukamaju: female = 55."
+        },
+        "infants_toddlers": {
+          "report_id": "R002",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Harapan, Desa Sukamaju: infants_toddlers = 4."
+        },
+        "children": {
+          "report_id": "R002",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Harapan, Desa Sukamaju: children = 10."
+        },
+        "elderly": {
+          "report_id": "R002",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Harapan, Desa Sukamaju: elderly = 12."
+        },
+        "pregnant": {
+          "report_id": "R002",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Harapan, Desa Sukamaju: pregnant = 1."
+        },
+        "breastfeeding": {
+          "report_id": "R002",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Harapan, Desa Sukamaju: breastfeeding = 2."
+        }
+      }
+    },
+    {
+      "disaster_id": "",
+      "shelter_id": "",
+      "batch_id": "user-validation-2026-10-25",
+      "report_id": "R003",
+      "reported_at": "2026-10-25T00:00",
+      "shelter_name": "Posko Teduh",
+      "village": "Mekarsari",
+      "shelter_type": "terkonsentrasi",
+      "total_people": 80,
+      "total_families": 20,
+      "male": 38,
+      "female": 42,
+      "infants_toddlers": 4,
+      "children": 10,
+      "elderly": 5,
+      "pregnant": 1,
+      "breastfeeding": 2,
+      "disability": 0,
+      "urgent_needs": [
+        "perlengkapan kebersihan"
+      ],
+      "surplus_do_not_send": [
+        "air bersih"
+      ],
+      "notes": "DATA SINTETIS — khusus uji pengguna SIGAP; bukan laporan kejadian nyata.",
+      "stock": {
+        "air_liter_per_hari": 1500
+      },
+      "stock_context": {
+        "air_liter_per_hari": {
+          "unit": "L",
+          "recorded_at": "2026-10-25T00:00",
+          "horizon_hours": 24
+        }
+      },
+      "source_report_ids": [
+        "R003"
+      ],
+      "validation_issues": [],
+      "unverified_numbers": [],
+      "stock_issues": [],
+      "notes_history": [],
+      "corrections": [],
+      "pending_clear_fields": [],
+      "is_estimate": false,
+      "missing_fields": [],
+      "validation_status": "LOLOS_PEMERIKSAAN",
+      "field_provenance": {
+        "total_people": {
+          "report_id": "R003",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Teduh, Desa Mekarsari: total_people = 80."
+        },
+        "total_families": {
+          "report_id": "R003",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Teduh, Desa Mekarsari: total_families = 20."
+        },
+        "male": {
+          "report_id": "R003",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Teduh, Desa Mekarsari: male = 38."
+        },
+        "female": {
+          "report_id": "R003",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Teduh, Desa Mekarsari: female = 42."
+        },
+        "infants_toddlers": {
+          "report_id": "R003",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Teduh, Desa Mekarsari: infants_toddlers = 4."
+        },
+        "children": {
+          "report_id": "R003",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Teduh, Desa Mekarsari: children = 10."
+        },
+        "elderly": {
+          "report_id": "R003",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Teduh, Desa Mekarsari: elderly = 5."
+        },
+        "pregnant": {
+          "report_id": "R003",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Teduh, Desa Mekarsari: pregnant = 1."
+        },
+        "breastfeeding": {
+          "report_id": "R003",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Teduh, Desa Mekarsari: breastfeeding = 2."
+        },
+        "disability": {
+          "report_id": "R003",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Teduh, Desa Mekarsari: disability = 0."
+        }
+      }
+    },
+    {
+      "disaster_id": "",
+      "shelter_id": "",
+      "batch_id": "user-validation-2026-10-25",
+      "report_id": "R004",
+      "reported_at": "2026-10-25T00:00",
+      "shelter_name": "Posko Melati",
+      "village": "Cisarua",
+      "shelter_type": "terkonsentrasi",
+      "total_people": 63,
+      "total_families": null,
+      "male": null,
+      "female": null,
+      "infants_toddlers": null,
+      "children": null,
+      "elderly": null,
+      "pregnant": null,
+      "breastfeeding": null,
+      "disability": null,
+      "urgent_needs": [
+        "selimut",
+        "makanan bayi"
+      ],
+      "surplus_do_not_send": [],
+      "notes": "DATA SINTETIS — khusus uji pengguna SIGAP; bukan laporan kejadian nyata.",
+      "stock": {},
+      "stock_context": {},
+      "source_report_ids": [
+        "R004"
+      ],
+      "validation_issues": [],
+      "unverified_numbers": [],
+      "stock_issues": [],
+      "notes_history": [],
+      "corrections": [],
+      "pending_clear_fields": [],
+      "is_estimate": true,
+      "missing_fields": [
+        "male",
+        "female",
+        "infants_toddlers",
+        "elderly",
+        "pregnant",
+        "breastfeeding",
+        "disability"
+      ],
+      "validation_status": "PARSIAL",
+      "field_provenance": {
+        "total_people": {
+          "report_id": "R004",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Melati, Desa Cisarua: total_people = 63."
+        }
+      }
+    },
+    {
+      "disaster_id": "",
+      "shelter_id": "",
+      "batch_id": "user-validation-2026-10-25",
+      "report_id": "R005",
+      "reported_at": "2026-10-25T00:00",
+      "shelter_name": "Posko Nusa",
+      "village": "Sukamaju",
+      "shelter_type": "terkonsentrasi",
+      "total_people": 120,
+      "total_families": 30,
+      "male": 59,
+      "female": 61,
+      "infants_toddlers": 4,
+      "children": 10,
+      "elderly": 8,
+      "pregnant": 1,
+      "breastfeeding": 2,
+      "disability": 1,
+      "urgent_needs": [
+        "air bersih",
+        "obat-obatan"
+      ],
+      "surplus_do_not_send": [],
+      "notes": "DATA SINTETIS — khusus uji pengguna SIGAP; bukan laporan kejadian nyata.",
+      "stock": {
+        "air_liter_per_hari": 2000
+      },
+      "stock_context": {
+        "air_liter_per_hari": {
+          "unit": "L",
+          "recorded_at": "2026-10-25T00:00",
+          "horizon_hours": 48
+        }
+      },
+      "source_report_ids": [
+        "R005"
+      ],
+      "validation_issues": [],
+      "unverified_numbers": [],
+      "stock_issues": [],
+      "notes_history": [],
+      "corrections": [],
+      "pending_clear_fields": [],
+      "is_estimate": false,
+      "missing_fields": [],
+      "validation_status": "LOLOS_PEMERIKSAAN",
+      "field_provenance": {
+        "total_people": {
+          "report_id": "R005",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Nusa, Desa Sukamaju: total_people = 120."
+        },
+        "total_families": {
+          "report_id": "R005",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Nusa, Desa Sukamaju: total_families = 30."
+        },
+        "male": {
+          "report_id": "R005",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Nusa, Desa Sukamaju: male = 59."
+        },
+        "female": {
+          "report_id": "R005",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Nusa, Desa Sukamaju: female = 61."
+        },
+        "infants_toddlers": {
+          "report_id": "R005",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Nusa, Desa Sukamaju: infants_toddlers = 4."
+        },
+        "children": {
+          "report_id": "R005",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Nusa, Desa Sukamaju: children = 10."
+        },
+        "elderly": {
+          "report_id": "R005",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Nusa, Desa Sukamaju: elderly = 8."
+        },
+        "pregnant": {
+          "report_id": "R005",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Nusa, Desa Sukamaju: pregnant = 1."
+        },
+        "breastfeeding": {
+          "report_id": "R005",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Nusa, Desa Sukamaju: breastfeeding = 2."
+        },
+        "disability": {
+          "report_id": "R005",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Nusa, Desa Sukamaju: disability = 1."
+        }
+      }
+    },
+    {
+      "disaster_id": "",
+      "shelter_id": "",
+      "batch_id": "user-validation-2026-10-25",
+      "report_id": "R006",
+      "reported_at": "2026-10-25T00:00",
+      "shelter_name": "Posko Pelita",
+      "village": "Cipandan",
+      "shelter_type": "terkonsentrasi",
+      "total_people": 54,
+      "total_families": 14,
+      "male": 26,
+      "female": 28,
+      "infants_toddlers": 4,
+      "children": 10,
+      "elderly": 4,
+      "pregnant": 1,
+      "breastfeeding": 2,
+      "disability": 0,
+      "urgent_needs": [
+        "air bersih",
+        "makanan siap saji"
+      ],
+      "surplus_do_not_send": [],
+      "notes": "DATA SINTETIS — khusus uji pengguna SIGAP; bukan laporan kejadian nyata.",
+      "stock": {
+        "air_liter_per_hari": 0
+      },
+      "stock_context": {
+        "air_liter_per_hari": {
+          "unit": "L",
+          "recorded_at": "2026-10-25T00:00",
+          "horizon_hours": 24
+        }
+      },
+      "source_report_ids": [
+        "R006"
+      ],
+      "validation_issues": [],
+      "unverified_numbers": [],
+      "stock_issues": [],
+      "notes_history": [],
+      "corrections": [],
+      "pending_clear_fields": [],
+      "is_estimate": false,
+      "missing_fields": [],
+      "validation_status": "LOLOS_PEMERIKSAAN",
+      "field_provenance": {
+        "total_people": {
+          "report_id": "R006",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Pelita, Desa Cipandan: total_people = 54."
+        },
+        "total_families": {
+          "report_id": "R006",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Pelita, Desa Cipandan: total_families = 14."
+        },
+        "male": {
+          "report_id": "R006",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Pelita, Desa Cipandan: male = 26."
+        },
+        "female": {
+          "report_id": "R006",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Pelita, Desa Cipandan: female = 28."
+        },
+        "infants_toddlers": {
+          "report_id": "R006",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Pelita, Desa Cipandan: infants_toddlers = 4."
+        },
+        "children": {
+          "report_id": "R006",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Pelita, Desa Cipandan: children = 10."
+        },
+        "elderly": {
+          "report_id": "R006",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Pelita, Desa Cipandan: elderly = 4."
+        },
+        "pregnant": {
+          "report_id": "R006",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Pelita, Desa Cipandan: pregnant = 1."
+        },
+        "breastfeeding": {
+          "report_id": "R006",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Pelita, Desa Cipandan: breastfeeding = 2."
+        },
+        "disability": {
+          "report_id": "R006",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Pelita, Desa Cipandan: disability = 0."
+        }
+      }
+    },
+    {
+      "disaster_id": "",
+      "shelter_id": "",
+      "batch_id": "user-validation-2026-10-25",
+      "report_id": "R007",
+      "reported_at": "2026-10-25T00:00",
+      "shelter_name": "Posko Harapan",
+      "village": "Cipandan",
+      "shelter_type": "terkonsentrasi",
+      "total_people": 40,
+      "total_families": 10,
+      "male": 19,
+      "female": 21,
+      "infants_toddlers": 4,
+      "children": 10,
+      "elderly": 3,
+      "pregnant": 1,
+      "breastfeeding": 2,
+      "disability": 0,
+      "urgent_needs": [
+        "selimut"
+      ],
+      "surplus_do_not_send": [],
+      "notes": "DATA SINTETIS — khusus uji pengguna SIGAP; bukan laporan kejadian nyata.",
+      "stock": {
+        "air_liter_per_hari": 100
+      },
+      "stock_context": {
+        "air_liter_per_hari": {
+          "unit": "L",
+          "recorded_at": "2026-10-25T00:00",
+          "horizon_hours": 24
+        }
+      },
+      "source_report_ids": [
+        "R007"
+      ],
+      "validation_issues": [],
+      "unverified_numbers": [],
+      "stock_issues": [],
+      "notes_history": [],
+      "corrections": [],
+      "pending_clear_fields": [],
+      "is_estimate": false,
+      "missing_fields": [],
+      "validation_status": "LOLOS_PEMERIKSAAN",
+      "field_provenance": {
+        "total_people": {
+          "report_id": "R007",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Harapan, Desa Cipandan: total_people = 40."
+        },
+        "total_families": {
+          "report_id": "R007",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Harapan, Desa Cipandan: total_families = 10."
+        },
+        "male": {
+          "report_id": "R007",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Harapan, Desa Cipandan: male = 19."
+        },
+        "female": {
+          "report_id": "R007",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Harapan, Desa Cipandan: female = 21."
+        },
+        "infants_toddlers": {
+          "report_id": "R007",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Harapan, Desa Cipandan: infants_toddlers = 4."
+        },
+        "children": {
+          "report_id": "R007",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Harapan, Desa Cipandan: children = 10."
+        },
+        "elderly": {
+          "report_id": "R007",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Harapan, Desa Cipandan: elderly = 3."
+        },
+        "pregnant": {
+          "report_id": "R007",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Harapan, Desa Cipandan: pregnant = 1."
+        },
+        "breastfeeding": {
+          "report_id": "R007",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Harapan, Desa Cipandan: breastfeeding = 2."
+        },
+        "disability": {
+          "report_id": "R007",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Harapan, Desa Cipandan: disability = 0."
+        }
+      }
+    },
+    {
+      "disaster_id": "",
+      "shelter_id": "",
+      "batch_id": "user-validation-2026-10-25",
+      "report_id": "R008",
+      "reported_at": "2026-10-25T00:00",
+      "shelter_name": "Posko Mandiri",
+      "village": "Cibineng",
+      "shelter_type": "terkonsentrasi",
+      "total_people": 75,
+      "total_families": 19,
+      "male": 36,
+      "female": 39,
+      "infants_toddlers": 4,
+      "children": 10,
+      "elderly": 6,
+      "pregnant": 1,
+      "breastfeeding": 2,
+      "disability": 0,
+      "urgent_needs": [
+        "perlengkapan kebersihan"
+      ],
+      "surplus_do_not_send": [],
+      "notes": "DATA SINTETIS — khusus uji pengguna SIGAP; bukan laporan kejadian nyata.",
+      "stock": {
+        "air_liter_per_hari": 1125
+      },
+      "stock_context": {
+        "air_liter_per_hari": {
+          "unit": "L",
+          "recorded_at": "2026-10-25T00:00",
+          "horizon_hours": 24
+        }
+      },
+      "source_report_ids": [
+        "R008"
+      ],
+      "validation_issues": [],
+      "unverified_numbers": [],
+      "stock_issues": [],
+      "notes_history": [],
+      "corrections": [],
+      "pending_clear_fields": [],
+      "is_estimate": false,
+      "missing_fields": [],
+      "validation_status": "LOLOS_PEMERIKSAAN",
+      "field_provenance": {
+        "total_people": {
+          "report_id": "R008",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Mandiri, Desa Cibineng: total_people = 75."
+        },
+        "total_families": {
+          "report_id": "R008",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Mandiri, Desa Cibineng: total_families = 19."
+        },
+        "male": {
+          "report_id": "R008",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Mandiri, Desa Cibineng: male = 36."
+        },
+        "female": {
+          "report_id": "R008",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Mandiri, Desa Cibineng: female = 39."
+        },
+        "infants_toddlers": {
+          "report_id": "R008",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Mandiri, Desa Cibineng: infants_toddlers = 4."
+        },
+        "children": {
+          "report_id": "R008",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Mandiri, Desa Cibineng: children = 10."
+        },
+        "elderly": {
+          "report_id": "R008",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Mandiri, Desa Cibineng: elderly = 6."
+        },
+        "pregnant": {
+          "report_id": "R008",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Mandiri, Desa Cibineng: pregnant = 1."
+        },
+        "breastfeeding": {
+          "report_id": "R008",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Mandiri, Desa Cibineng: breastfeeding = 2."
+        },
+        "disability": {
+          "report_id": "R008",
+          "reported_at": "2026-10-25T00:00",
+          "source_excerpt": "Data sintetis uji pengguna, Posko Mandiri, Desa Cibineng: disability = 0."
+        }
+      }
+    }
+  ]
+}

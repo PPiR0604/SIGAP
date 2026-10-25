@@ -1,4 +1,4 @@
-"""Logistics Storage Writer — Langflow custom component (Google Sheets + CSV).
+"""Logistics Storage Writer — Langflow custom component (SQLite, legacy Google Sheets/CSV).
 
 Menulis baris yang SUDAH DIKONFIRMASI petugas (output "Baris Disetujui" dari Officer Confirmation Gate).
 Mendukung UPSERT (update jika posko sudah ada, append jika posko baru) agar tidak terjadi
@@ -33,6 +33,7 @@ from pathlib import Path
 
 import httpx
 from sigap_contracts import load_snapshot, commit_snapshot, merge_storage_json_cells, matches_update_target
+from sigap_sqlite import write_sqlite, database_path
 
 from lfx.custom.custom_component.component import Component
 from lfx.io import DropdownInput, MessageTextInput, Output, SecretStrInput, StrInput
@@ -268,6 +269,7 @@ class LogisticsStorageWriter(Component):
     name = "LogisticsStorageWriter"
 
     inputs = [
+        StrInput(name='sqlite_path',display_name='Database Rekap SQLite',value='',advanced=True,info='Kosong memakai SIGAP_SHELTER_DB_PATH atau output/rekap_posko.sqlite3. Harus sama di reader dan validator.'),
         MessageTextInput(
             name="content",
             display_name="Isi",
@@ -277,9 +279,9 @@ class LogisticsStorageWriter(Component):
         DropdownInput(
             name="storage_mode",
             display_name="Mode Penyimpanan",
-            options=["auto", "google_sheets", "csv"],
-            value="auto",
-            info="auto: Google Sheets jika URL terisi, CSV jika kosong. Gagal/timeout Google: periksa status sebelum retry.",
+            options=["sqlite", "auto", "google_sheets", "csv"],
+            value="sqlite",
+            info="sqlite: database rekap lokal Langflow; SIGAP_SHELTER_DB_PATH menentukan lokasinya. Mode lama tetap tersedia secara eksplisit.",
         ),
         SecretStrInput(
             name="webhook_url",
@@ -316,9 +318,24 @@ class LogisticsStorageWriter(Component):
         except (ValueError, json.JSONDecodeError) as exc:
             return Message(text=f"GAGAL: {exc}")
 
-        mode = (self.storage_mode or "auto").strip()
+        mode = (self.storage_mode or "sqlite").strip()
         url = (self.webhook_url or "").strip()
         note = ""
+        if mode!='sqlite' and any(r.get('storage_source',{}).get('mode')=='sqlite' for r in payload.get('approved_write',{}).get('effective_payload',{}).get('records',[])):
+            return Message(text='GAGAL: kandidat terikat rekap SQLite; writer harus memakai sumber yang sama.')
+
+        if mode == 'sqlite':
+            try:
+                def match(incoming, old, header, target):
+                    index = lambda name: header.index(name) if name in header else None
+                    return matches_update_target(old, header, target) if target else is_row_match(incoming,old,index('posko'),index('desa'),index('id_laporan'),index('shelter_id'),index('disaster_id'))
+                info = write_sqlite(payload, database_path(getattr(self,'sqlite_path',None)), match, merge_update)
+                self.status = 'Tersimpan di SQLite'
+                return success_result(payload, {'mode':'sqlite','path':info['path']},f"BERHASIL [mode: SQLite]: {info['appended']} baru, {info['updated']} diperbarui." + (' Receipt sebelumnya dipakai; tidak mengulang write.' if info['replayed'] else ''))
+            except Exception as exc:
+                return Message(text=f'GAGAL: menyimpan SQLite: {exc}')
+        if mode not in ('auto','google_sheets','csv'):
+            return Message(text='GAGAL: mode penyimpanan tidak dikenal.')
 
         if mode in ("auto", "google_sheets"):
             if url:

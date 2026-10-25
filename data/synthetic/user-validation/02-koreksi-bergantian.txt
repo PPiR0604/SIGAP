@@ -1,0 +1,7 @@
+DATA SINTETIS. Lakukan melalui detail posko agar target terikat otomatis.
+
+A. Posko Harapan, Desa Sukamaju: jumlah jiwa 102; laki-laki 47; perempuan 55; disabilitas 2.
+B. Tanpa menyimpan A dahulu, buka Posko Cibening, Desa Cibineng: jumlah jiwa 104; laki-laki 57; perempuan 47; lansia 9.
+C. Buka kembali Harapan Sukamaju: pastikan 102/47/55 tetap ada. Ubah lansia menjadi 14.
+D. Tinjau pilihan nilai lama/baru lalu setujui tiap kandidat secara terpisah. Cibening harus tetap 104/57/47/9.
+E. Harapan di Cipandan harus tetap 40 jiwa. Kebutuhan posko lain tidak boleh hilang.

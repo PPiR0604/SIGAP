@@ -1,0 +1,12 @@
+.brand-mark { display: block; position: relative; flex: 0 0 44px; width: 44px; height: 49px; overflow: hidden; }
+.brand-mark img { position: absolute; width: 100px; height: 100px; max-width: none; left: -28px; top: -15px; }
+.startup-screen { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 28px; background: #fff; color: #0c2d4e; }
+.startup-content { width: min(100%, 360px); text-align: center; animation: startup-appear .4s ease-out both; }
+.splash-logo { display: block; width: min(68vw, 240px); height: auto; margin: 0 auto 12px; }
+.startup-name { margin: 0; font-size: 17px; line-height: 1.6; font-weight: 500; }
+.startup-status { display: flex; gap: 10px; align-items: center; justify-content: center; margin-top: 32px; font-size: 14px; color: #566a70; }
+.startup-loader { display: block; width: 16px; height: 16px; border: 2px solid #e7edf2; border-top-color: #0c2d4e; border-right-color: #f6b900; border-radius: 50%; animation: startup-spin .9s linear infinite; }
+.startup-caption { position: absolute; bottom: max(28px, env(safe-area-inset-bottom)); margin: 0; padding: 0 20px; text-align: center; font-size: 12px; letter-spacing: .02em; color: #566a70; }
+@keyframes startup-spin { to { transform: rotate(360deg); } }
+@keyframes startup-appear { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .startup-content, .startup-loader { animation: none; } }

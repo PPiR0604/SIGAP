@@ -6,3 +6,4 @@ coverage
 .gitignore
 .env
 .env.*
+data/

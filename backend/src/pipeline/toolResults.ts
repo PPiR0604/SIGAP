@@ -37,7 +37,8 @@ export const ShelterRecordSchema = z.object({
   missing_fields: z.array(z.string()).optional(),
   field_provenance: z.record(z.string(), z.any()).optional(),
   stock: z.record(z.string(), z.any()).optional(),
-  stock_context: z.record(z.string(), z.any()).optional()
+  stock_context: z.record(z.string(), z.any()).optional(),
+  storage_conflicts:z.array(z.object({field:z.string(),previous_value:z.any(),incoming_value:z.any()}).passthrough()).optional()
 }).passthrough();
 
 export type ShelterRecord = z.infer<typeof ShelterRecordSchema>;

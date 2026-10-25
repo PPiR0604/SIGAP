@@ -1,5 +1,6 @@
 export interface HealthResponse {
-  agent?: 'gemini' | 'bob' | 'mock';
+  agent?: 'gemini' | 'openai' | 'bob' | 'mock';
+  model?:string;
   provider_status?: 'configured' | 'unavailable' | 'simulated';
   status: string;
   backend: string;
@@ -215,6 +216,7 @@ export async function submitBatchDecision(
     snapshot_id: string;
     partial_acknowledged: boolean;
     clear_decisions: Record<string, Record<string, 'clear' | 'keep' | 'defer'>>;
+    conflict_decisions?: Record<string,Record<string,'keep'|'incoming'>>;
   }
 ): Promise<{ success: boolean; status: string }> {
   let token = await ensureSessionToken();

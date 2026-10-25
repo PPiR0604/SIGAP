@@ -1,24 +1,25 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,writeFileSync,rmSync} from 'node:fs';
-import {tmpdir} from 'node:os';import {join} from 'node:path';
 import {loadGeminiSettings} from '../src/gemini/config.js';
-test('Gemini local key is backend-only and environment values override it',()=>{
-  const dir=mkdtempSync(join(tmpdir(),'sigap-gemini-')),file=join(dir,'config.json');
-  const previous={tpm:process.env.SIGAP_GEMINI_TPM_LIMIT,key:process.env.GEMINI_API_KEY,model:process.env.GEMINI_MODEL,path:process.env.SIGAP_GEMINI_CONFIG_PATH};
-  try{
-    process.env.SIGAP_GEMINI_CONFIG_PATH=file;delete process.env.GEMINI_API_KEY;delete process.env.GEMINI_MODEL;
-    assert.equal(loadGeminiSettings().apiKey,'');
-    writeFileSync(file,JSON.stringify({apiKey:'local-test-key',model:'gemini-3.8-flash'}));
-    assert.equal(loadGeminiSettings().apiKey,'local-test-key');
-    process.env.GEMINI_API_KEY='env-test-key';process.env.GEMINI_MODEL='gemini-3.5-flash-lite';
-    assert.deepEqual(loadGeminiSettings(),{apiKey:'env-test-key',model:'gemini-3.5-flash-lite',tpmLimit:200000});
-    process.env.SIGAP_GEMINI_TPM_LIMIT='120000';assert.equal(loadGeminiSettings().tpmLimit,120000);
-    process.env.SIGAP_GEMINI_TPM_LIMIT='-5';assert.throws(()=>loadGeminiSettings());
-    delete process.env.SIGAP_GEMINI_TPM_LIMIT;
-    writeFileSync(file,'{ secret invalid');assert.throws(()=>loadGeminiSettings(),error=>!String(error).includes('secret'));
-  }finally{
-    for(const [name,value] of Object.entries({GEMINI_API_KEY:previous.key,GEMINI_MODEL:previous.model,SIGAP_GEMINI_CONFIG_PATH:previous.path,SIGAP_GEMINI_TPM_LIMIT:previous.tpm}))if(value===undefined)delete process.env[name];else process.env[name]=value;
-    rmSync(dir,{recursive:true,force:true});
-  }
-});
+import {loadOpenAISettings} from '../src/openai/config.js';
+
+function withEnv(values:Record<string,string|undefined>,run:()=>void){
+  const previous=Object.fromEntries(Object.keys(values).map(name=>[name,process.env[name]]));
+  try{for(const [name,value] of Object.entries(values))if(value===undefined)delete process.env[name];else process.env[name]=value;run();}
+  finally{for(const [name,value] of Object.entries(previous))if(value===undefined)delete process.env[name];else process.env[name]=value;}
+}
+test('Gemini settings use environment only, including an explicitly empty key and zero quota limit',()=>withEnv({GEMINI_API_KEY:' synthetic-test-key ',GEMINI_MODEL:'gemini-3.8-flash',SIGAP_GEMINI_TPM_LIMIT:'120000',SIGAP_GEMINI_CONFIG_PATH:'ignored-legacy.json',SIGAP_DOCKER:'1'},()=>{
+  assert.deepEqual(loadGeminiSettings(),{apiKey:'synthetic-test-key',model:'gemini-3.8-flash',tpmLimit:120000});
+  process.env.GEMINI_API_KEY='';assert.equal(loadGeminiSettings().apiKey,'');
+  process.env.SIGAP_GEMINI_TPM_LIMIT='0';assert.equal(loadGeminiSettings().tpmLimit,0);
+  process.env.SIGAP_GEMINI_TPM_LIMIT='-1';assert.throws(()=>loadGeminiSettings());
+  process.env.SIGAP_GEMINI_TPM_LIMIT='200000';process.env.GEMINI_MODEL='invalid-private-value';
+  assert.throws(()=>loadGeminiSettings(),error=>!String(error).includes('invalid-private-value'));
+}));
+test('proxy settings use environment only and remap localhost for Docker without changing credentials',()=>withEnv({SIGAP_OPENAI_BASE_URL:'http://localhost:20128/v1/',SIGAP_OPENAI_MODEL:'ag/gemini-3.8-flash-high',SIGAP_OPENAI_API_KEY:' synthetic-proxy-key ',SIGAP_OPENAI_CONFIG_PATH:'ignored-legacy.json',SIGAP_DOCKER:'1'},()=>{
+  assert.deepEqual(loadOpenAISettings(),{baseUrl:'http://host.docker.internal:20128/v1',model:'ag/gemini-3.8-flash-high',apiKey:'synthetic-proxy-key'});
+  process.env.SIGAP_OPENAI_API_KEY='';assert.equal(loadOpenAISettings().apiKey,'');
+  process.env.SIGAP_DOCKER='0';assert.equal(loadOpenAISettings().baseUrl,'http://localhost:20128/v1');
+  process.env.SIGAP_OPENAI_BASE_URL='http://private:secret@localhost:20128/v1';
+  assert.throws(()=>loadOpenAISettings(),error=>!String(error).includes('secret'));
+}));

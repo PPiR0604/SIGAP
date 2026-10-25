@@ -14,6 +14,8 @@ export interface AgentPromptOptions {
   operation?: 'prepare' | 'commit';
   /** Pesan pertama pada sesi: backend membaca rekap tersimpan secara paralel tanpa melibatkan model. */
   firstTurn?: boolean;
+  sourceFormat?: 'csv';
+  expectedReportCount?: number;
   writePayload?: Record<string, any>;
 }
 
@@ -60,7 +62,8 @@ export type PermissionGate = (
 ) => Promise<PermissionDecision>;
 
 export interface AgentRuntime {
-  readonly provider?: 'bob' | 'gemini' | 'mock';
+  readonly provider?: 'bob' | 'gemini' | 'openai' | 'mock';
+  readonly model?:string;
   isAvailable(): Promise<boolean>;
   initSession(config: AgentSessionConfig): Promise<string>;
   sendPrompt(
@@ -71,5 +74,6 @@ export interface AgentRuntime {
   closeSession(sessionId: string): Promise<void>;
   /** Opsional: baca rekap tersimpan langsung lewat tool baca (tanpa model). */
   readStoredRekap?(sessionId: string, signal?: AbortSignal): Promise<{ content: Array<{ type: string; text?: string }>; isError?: boolean } | null>;
+  calculateNeedsForSnapshot?(sessionId:string, reference:{snapshot_id:string;snapshot_sha256:string}):Promise<{content:Array<{type:string;text?:string}>;isError?:boolean}>;
   shutdown?(): Promise<void>;
 }

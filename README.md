@@ -1,16 +1,22 @@
-# SIGAP (Sistem Informasi dan Manajemen Logistik Tanggap Bencana)
+﻿# SIGAP (Sistem Informasi dan Manajemen Logistik Tanggap Bencana)
+
+Paket untuk uji pengguna: [panduan peserta](data/synthetic/user-validation/PANDUAN-PESERTA.md), [data sintetis, hasil pembanding, template feedback dan reset database uji](data/synthetic/user-validation/README.md). Database uji baru dipisahkan dari rekap sebelumnya dan diaktifkan melalui flow Langflow; tidak ada penghapusan database lama.
 
 Sistem Intelijen Logistik dan Asisten Posko yang mengintegrasikan antarmuka percakapan **IBM Bob** dan **Web Workspace** dengan **Langflow** (sebagai *Execution Engine*) melalui **Model Context Protocol (MCP)**. SIGAP membantu petugas Pos Komando mengubah teks laporan WhatsApp bencana menjadi rekap pengungsi terpilah, memeriksa anomali data, menghitung kalkulasi kebutuhan dasar standar Sphere, serta menyusun draf buletin logistik untuk donatur dengan prinsip **Human-in-the-Loop (HITL)**.
 
 ```text
-[Petugas Posko] ↔ [Web Workspace / IBM Bob] ↔ [Backend SIGAP / MCP] ↔ [Langflow] ↔ [CSV / Google Workspace]
+[Petugas Posko] ↔ [Web Workspace / Bob] ↔ [Backend SIGAP / MCP] ↔ [Langflow] ↔ [SQLite Rekap]
 ```
+
+---
+
+**Pembaruan Penyimpanan SQLite:** Rekap utama posko menggunakan database SQLite (`rekap_posko.sqlite3`) yang dikelola langsung oleh Langflow. Unggahan `.csv` dan laporan percakapan WhatsApp masuk ke alur validasi yang sama; perbedaan dengan data tersimpan memerlukan konfirmasi petugas sebelum penulisan. Ekspor CSV tetap tersedia. Lihat [panduan migrasi SQLite](langflow/SQLITE_MIGRATION.md).
 
 ---
 
 ## 1. Fitur Utama & Keunggulan
 
-- **Input Percakapan Lapangan**: Menerima salinan teks atau berkas `.txt` ekspor chat WhatsApp posko lapangan secara langsung.
+- **Input Fleksibel Lapangan**: Menerima teks laporan WhatsApp, unggahan berkas `.txt` percakapan, serta impor tabel `.csv` data posko.
 - **Penyaringan Data Pribadi Otomatis (PII Redaction)**: NIK (16 digit), nomor telepon, nomor rekening, dan email disamarkan secara otomatis sebelum teks dikirim ke model AI.
 - **Validasi Data & Deteksi Anomali**: Mendeteksi ketidakkonsistenan angka pengungsi, kelompok rentan (balita, lansia, bumil), laporan duplikat, dan posko yang belum memperbarui data (>24 jam).
 - **Kalkulasi Standar Kemanusiaan (Sphere Project)**: Menghitung estimasi kebutuhan dasar darurat (air 15 L/orang/hari, pangan 2.100 kkal, perlengkapan bayi, sanitasi) secara deterministik menggunakan rumus tetap.
@@ -24,7 +30,7 @@ Sistem Intelijen Logistik dan Asisten Posko yang mengintegrasikan antarmuka perc
 
 Semua konfigurasi sistem disatukan ke dalam **satu berkas `.env`** di root repositori:
 
-Salin template `.env.example` menjadi `.env`:
+Salin berkas template `.env.example` menjadi `.env`:
 
 ```bash
 cp .env.example .env
@@ -34,12 +40,17 @@ cp .env.example .env
 
 | Variabel | Pilihan / Contoh | Penjelasan |
 | :--- | :--- | :--- |
-| `SIGAP_AGENT_PROVIDER` | `gemini` (default) \| `mock` \| `bob` | Runtime agen yang digunakan. `gemini` untuk live Gemini API, `mock` untuk simulasi lokal tanpa API/kuota, `bob` untuk IBM Bob ACP. |
+| `SIGAP_AGENT_PROVIDER` | `openai` (default) \| `gemini` \| `mock` \| `bob` | Runtime agen yang digunakan. `openai` untuk endpoint kompatibel OpenAI, `gemini` untuk live Gemini API, `mock` untuk simulasi lokal tanpa API, `bob` untuk IBM Bob ACP. |
+| `SIGAP_OPENAI_BASE_URL` | `http://localhost:20128/v1` | Base URL endpoint kompatibel OpenAI jika menggunakan provider `openai`. |
+| `SIGAP_OPENAI_MODEL` | `gemini/gemini-3.5-flash-lite(medium)` | Nama model untuk provider OpenAI. |
+| `SIGAP_OPENAI_API_KEY` | *(Opsional)* | API Key model OpenAI jika diperlukan oleh endpoint. |
 | `GEMINI_API_KEY` | `AIzaSy...` | API Key Google Gemini (jika menggunakan provider `gemini`). |
 | `GEMINI_MODEL` | `gemini-3.5-flash-lite` \| `gemini-3.8-flash` | Model Gemini yang digunakan untuk ekstraksi & percakapan. |
+| `SIGAP_GEMINI_TPM_LIMIT` | `200000` | Batas token per menit untuk model Gemini. |
 | `LANGFLOW_MCP_URL` | `http://localhost:7860/api/v1/mcp/project/<PROJECT_ID>/streamable` | Endpoint MCP Streamable HTTP dari project Langflow Anda. |
 | `LANGFLOW_API_KEY` | `sk-...` | API Key dari Langflow untuk mengakses tool MCP. |
 | `SIGAP_SESSION_TOKEN` | *(Biarkan kosong)* | Token keamanan sesi lokal. Dibiarkan kosong agar otomatis dibuat dan disinkronkan ke frontend tanpa input manual. |
+| `SIGAP_SHELTER_DB_PATH` | *(Opsional)* | Path absolut ke file database SQLite rekap posko (default: `output/rekap_posko.sqlite3`). |
 
 > **Mode Simulasi Cepat**: Jika kuota API habis atau ingin menguji antarmuka tanpa API eksternal, cukup setel `SIGAP_AGENT_PROVIDER=mock`.
 
@@ -57,12 +68,12 @@ Pastikan Langflow Desktop aktif di komputer Anda:
 1. Di Langflow, klik tombol **New Project** atau buat project baru (beri nama, misalnya **`SIGAP`**).
 2. Klik tombol **Upload / Import** di dalam project tersebut.
 3. Import ketujuh file flow JSON yang berada di folder [`langflow/flows/`](langflow/flows/):
-   - `fetch_shelters.json` → Tool membaca rekap posko tersimpan.
+   - `fetch_shelters.json` → Tool membaca rekap posko tersimpan dari database SQLite.
    - `prepare_needs.json` → Tool masking PII & ekstraksi laporan ke format terstruktur.
    - `validate_needs.json` → Tool validasi relasi angka, field kosong, dan integritas data.
    - `calculate_gap.json` → Tool kalkulasi gap kebutuhan air (15 L/org/hari), pangan (2.100 kkal), sanitasi & hunian.
    - `flag_anomalies.json` → Tool deteksi laporan duplikat & posko senyap (>24 jam).
-   - `upsert_shelter.json` → Tool penyimpanan data terverifikasi (memerlukan persetujuan petugas / HITL).
+   - `upsert_shelter.json` → Tool penyimpanan data terverifikasi ke SQLite (memerlukan persetujuan petugas / HITL).
    - `draft_bulletin.json` → Tool penyusunan draf buletin donatur.
 
 ### Langkah 3: Pengaturan Input pada Node di Langflow
@@ -72,10 +83,10 @@ Buka flow dan sesuaikan input berikut sesuai kebutuhan:
    - Klik node **OpenAI Report Extractor**.
    - Masukkan **API Key** model LLM ekstraksi Anda.
    - Masukkan **Base URL** (misalnya `https://api.openai.com/v1` atau endpoint provider kompatibel OpenAI lainnya) dan **Model Name**.
-   *(Catatan: Jika memakai backend SIGAP dengan Gemini, ekstraksi laporan ditangani langsung oleh runtime backend).*
+   *(Catatan: Jika memakai backend SIGAP dengan Gemini atau OpenAI, ekstraksi laporan ditangani langsung oleh runtime backend).*
 
 2. **Pada flow `fetch_shelters` & `upsert_shelter` (Penyimpanan Data)**:
-   - **Mode CSV Lokal (Default)**: Biarkan input file path mengarah ke `output/rekap_posko.csv`. Data akan disimpan dan dibaca secara lokal.
+   - **Mode SQLite (Default)**: Gunakan path database yang sama pada reader, writer, dan validator. Kosongkan untuk memakai `SIGAP_SHELTER_DB_PATH` di proses Langflow atau default `output/rekap_posko.sqlite3`.
    - **Mode Google Sheets (Opsional)**:
      - Jika ingin terhubung ke Google Sheets, deploy skrip [`integrations/google_apps_script/Code.gs`](integrations/google_apps_script/Code.gs) sebagai Web App di Google Apps Script.
      - Masukkan **Webhook URL** dan **Shared Secret** pada node *Logistics Storage Reader* (`fetch_shelters`) dan *Logistics Storage Writer* (`upsert_shelter`).
@@ -197,25 +208,29 @@ Sistem menggunakan **IBM Bob sebagai User-Facing Conversation Agent** yang terhu
 ```text
 ├── .env.example        # Template variabel lingkungan
 ├── docker-compose.yml  # Orkestrasi container frontend & backend
-├── backend/            # Fastify, SQLite, runtime Gemini/MCP, adapter Bob ACP
+├── backend/            # Fastify, SQLite, runtime OpenAI/Gemini/MCP, adapter Bob ACP
 │   ├── Dockerfile
 │   ├── src/
-│   ├── scripts/        # Skrip pengujian smoke & MCP probe
+│   ├── scripts/        # Skrip pengujian smoke, migrasi SQLite & MCP probe
 │   └── tests/          # Suite pengujian unit & integrasi backend
 ├── frontend/           # React + Vite Workspace untuk operator posko
 │   ├── Dockerfile
 │   ├── nginx.conf      # Reverse proxy API & streaming SSE
-│   ├── src/
-│   └── tests/          # Suite pengujian frontend
+│   ├── src/            # Komponen visual, formulir klarifikasi, dialog review
+│   └── tests/          # Suite pengujian frontend & Playwright e2e
 ├── langflow/           # Asset eksekusi Langflow
 │   ├── flows/          # 7 file flow JSON untuk di-import ke Langflow
 │   ├── components/     # Kode Python custom components
+│   ├── lib/            # Kontrak data SIGAP & modul helper SQLite
+│   ├── scripts/        # Skrip migrasi CSV ke SQLite & sinkronisasi
+│   ├── tests/          # Pengujian pytest migrasi SQLite
 │   └── prompts/        # Template prompt ekstraksi
-├── mcp/                # Konfigurasi MCP dan instruksi prompt Bob/Gemini
+├── mcp/                # Konfigurasi MCP dan instruksi prompt Bob/Gemini/OpenAI
 ├── integrations/       # Skrip Google Apps Script (Sheets & Docs)
-├── data/               # Contoh data teks laporan bencana dan dataset evaluasi
+├── data/               # Contoh data teks laporan bencana, CSV impor, dan dataset evaluasi
+│   └── synthetic/      # Template impor CSV posko & paket uji pengguna
 ├── dokumentasi-proyek/ # Tangkapan layar antarmuka Web UI, Bob, Langflow, dan Sheets
-└── output/             # Direktori output file CSV hasil penyimpanan
+└── output/             # Direktori output file database SQLite & ekspor CSV
 ```
 
 ---
@@ -225,20 +240,30 @@ Sistem menggunakan **IBM Bob sebagai User-Facing Conversation Agent** yang terhu
 Jalankan suite pengujian untuk memvalidasi integritas logika, kontrak data, dan keandalan sistem:
 
 ```powershell
-# 1. Jalankan pengujian backend Fastify (127 pengujian)
+# 1. Jalankan pengujian backend Fastify (135+ pengujian)
 cd backend
 npm test
 
-# 2. Jalankan pengujian frontend React (18 pengujian)
+# 2. Jalankan pengujian frontend React (22+ pengujian unit)
 cd ../frontend
 npm test
+
+# 3. Jalankan pengujian End-to-End Playwright
+cd frontend
+npx playwright test
+
+# 4. Jalankan pengujian migrasi SQLite Langflow
+python -m pytest langflow/tests/test_sqlite_migration.py -q
 ```
 
 ---
 
 ## 7. Referensi & Panduan Teknis
 
+- [Panduan Migrasi SQLite Langflow](langflow/SQLITE_MIGRATION.md)
+- [Panduan Peserta Uji Validasi Pengguna](data/synthetic/user-validation/PANDUAN-PESERTA.md)
 - [Panduan Teknis 7 Flow Langflow](langflow/README.md)
 - [Dokumentasi Layanan Backend](backend/README.md)
 - [Dokumentasi Antarmuka Web Workspace](frontend/README.md)
 - [Instruksi Konfigurasi IBM Bob MCP](mcp/bob_agent_instructions.md)
+- [Instruksi Konfigurasi OpenAI MCP](mcp/openai_agent_instructions.md)

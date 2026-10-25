@@ -9,6 +9,8 @@ import {compactToolResult,pruneHistory,shrinkConsumedPrepare} from './context.js
 import {TokenRateLimiter} from './rateLimit.js';
 import {logger} from '../logging.js';
 import {ToolValidationError} from '../acp/errors.js';
+import {GeminiUnavailableError} from './errors.js';
+import {ModelProviderError} from '../openai/errors.js';
 
 export interface GeminiRuntimeLimits {maxRounds:number;maxToolCalls:number;maxHistoryBytes:number;operationTimeoutMs:number;contextBudgetBytes:number}
 // contextBudgetBytes: target riwayat lintas operasi (~25 ribu token); maxHistoryBytes tetap batas keras per operasi.
@@ -26,7 +28,8 @@ async function cancellable<T>(promise:Promise<T>,signal:AbortSignal):Promise<T>{
 }
 
 export class GeminiAgentRuntime implements AgentRuntime {
-  readonly provider='gemini';
+  readonly provider:'gemini'|'openai'='gemini';
+  get model():string{return this.settings.model;}
   private sessions=new Map<string,Promise<Session>>();
   private resources=new Map<string,Session>();
   private busy=new Set<string>();
@@ -80,6 +83,14 @@ export class GeminiAgentRuntime implements AgentRuntime {
     if(!session.tools.length)throw new Error('Tool SIGAP tidak tersedia.');
     return session;
   }
+  /** Read-only calculation for a verified snapshot, including automatic correction recalculation. */
+  async calculateNeedsForSnapshot(sessionId:string,reference:{snapshot_id:string;snapshot_sha256:string}){
+    const session=await this.sessions.get(sessionId);
+    if(!session)throw new Error('Sesi Gemini belum diinisialisasi.');
+    const tool=session.tools.find(tool=>canonicalToolName(tool.name)==='calculate_gap');
+    if(!tool)throw new Error('Tool kalkulasi Langflow tidak tersedia.');
+    return session.mcp.callTool(tool.name,{input_value:JSON.stringify(reference)},session.lifetime.signal);
+  }
   async sendPrompt(options:AgentPromptOptions,onEvent:AgentEventHandler,gate?:PermissionGate):Promise<void>{
     if(!gate)throw new Error('Runtime Gemini memerlukan gerbang izin backend.');
     if(this.busy.has(options.sessionId))throw new Error('Sesi Gemini sedang memproses operasi lain.');
@@ -109,14 +120,28 @@ export class GeminiAgentRuntime implements AgentRuntime {
         const onUsage=(usage:GeminiUsage)=>{
           this.limiter.record(usage.promptTokens);
           total.requests++;total.promptTokens+=usage.promptTokens;total.outputTokens+=usage.outputTokens;total.totalTokens+=usage.totalTokens;
-          logger.info('Gemini usage',{operation:options.operation,round:round+1,history_bytes:requestBytes,static_bytes:staticBytes,...usage});
+          logger.info('LLM usage',{provider:this.provider,operation:options.operation,round:round+1,history_bytes:requestBytes,static_bytes:staticBytes,...usage});
         };
         await this.limiter.acquire(Math.ceil((requestBytes+staticBytes)/3),signal,()=>onEvent(createEvent(options.sessionId,'stage_changed',{stage:'waiting_quota'},meta)));
         const turn=await cancellable(this.client!.generate(history,offered,session.instruction,signal,onUsage),signal);
         if(turn.role!=='model'||!Array.isArray(turn.parts)||!turn.parts.length)throw new Error('Respons Gemini kosong atau tidak valid.');
         history.push(turn);bounded();
         const calls=turn.parts.filter(part=>part.functionCall).map(part=>part.functionCall as any);
-        for(const part of turn.parts)if(typeof part.text==='string'&&!part.thought&&!validationFailure)onEvent(createEvent(options.sessionId,'assistant_message',{chunk:part.text},meta));
+        let recoveredExtraction=false;
+        // Some providers return prepare's requested extraction JSON instead of a tool call.
+        // Only bridge that exact shape to the read-only validator with this operation's source.
+        const validator=offered.find(tool=>canonicalToolName(tool.name)==='validate_needs');
+        if(!calls.length&&!validated&&sourceReference&&validator&&options.operation==='prepare'){
+          const text=turn.parts.filter(part=>typeof part.text==='string'&&!part.thought).map(part=>part.text).join('\n').trim();
+          const fenced=/^```(?:json)?\s*([\s\S]*?)\s*```$/.exec(text);
+          let extraction:any;
+          try{extraction=JSON.parse(fenced?.[1]??text);}catch{/* Ordinary prose is not an extraction. */}
+          if(Array.isArray(extraction?.records)&&extraction.records.length&&extraction.records.every((record:any)=>record&&typeof record==='object'&&!Array.isArray(record)&&typeof record.report_id==='string')){
+            const call={id:randomUUID(),name:validator.name,args:{input_value:JSON.stringify({...sourceReference,records:extraction.records})}};
+            calls.push(call);turn.parts.push({functionCall:call});bounded();recoveredExtraction=true;
+          }
+        }
+        for(const part of turn.parts)if(typeof part.text==='string'&&!part.thought&&!validationFailure&&!recoveredExtraction)onEvent(createEvent(options.sessionId,'assistant_message',{chunk:part.text},meta));
         if(!calls.length){if(validationFailure)throw new ToolValidationError(validationFailure);session.history=history;return;}
         const results:Array<Record<string,unknown>>=[];
         for(const call of calls){
@@ -171,11 +196,13 @@ export class GeminiAgentRuntime implements AgentRuntime {
       }
       throw new Error('Batas putaran Gemini terlampaui.');
       }finally{
-        if(total.requests)logger.info('Gemini operasi selesai',{operation:options.operation,requests:total.requests,prompt_tokens:total.promptTokens,output_tokens:total.outputTokens,total_tokens:total.totalTokens});
+        if(total.requests)logger.info('LLM operasi selesai',{provider:this.provider,operation:options.operation,requests:total.requests,prompt_tokens:total.promptTokens,output_tokens:total.outputTokens,total_tokens:total.totalTokens});
       }
     }catch(error){
       // Kuota habis bersifat sementara: sesi dan riwayat operasi sebelumnya dipertahankan.
-      if(!(error instanceof Error&&/^(Gemini kuota|Batas token)/.test(error.message)))await this.closeSession(options.sessionId);
+      if(!(error instanceof GeminiUnavailableError)&&!(error instanceof ModelProviderError&&error.temporary)&&!(error instanceof Error&&/^(Gemini kuota|Batas token)/.test(error.message)))await this.closeSession(options.sessionId);
+      if(error instanceof ModelProviderError)throw error;
+      if(error instanceof GeminiUnavailableError)throw error;
       if(error instanceof Error&&/^(Sesi Gemini|Riwayat Gemini|Gemini kuota|Batas token|Batas |Argumen tool Gemini|Respons Gemini|Operasi Gemini|Tool MCP|MCP )/.test(error.message))throw error;
       throw new Error('Runtime Gemini gagal atau timeout.');
     }finally{this.busy.delete(options.sessionId);}

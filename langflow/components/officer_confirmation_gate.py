@@ -15,6 +15,7 @@ import json
 import re
 from datetime import datetime, timedelta, timezone
 from sigap_contracts import load_snapshot, save_snapshot, quality_status, clear_options, resolve_clear_decisions
+from sigap_sqlite import resolve_storage_conflicts
 
 from lfx.custom.custom_component.component import Component
 from lfx.io import MessageTextInput, Output
@@ -100,6 +101,7 @@ def evaluate(text: str, *, require_snapshot: bool = True) -> dict:
             if data.get("approved_snapshot_sha256") != data["snapshot_sha256"]:
                 raise ValueError("Persetujuan harus mengacu approved_snapshot_sha256 dari pratinjau yang sama.")
             records = json.loads(json.dumps(snapshot["records"]))
+            records = resolve_storage_conflicts(records, data.get('conflict_decisions',{}))
             options = clear_options(records)
             if any(r.get("missing_fields") or r.get("validation_issues") or r.get("unverified_numbers") or r.get("pending_clear_fields") for r in records) and data.get("allow_partial") is not True:
                 raise ValueError("Snapshot parsial/bermasalah: tampilkan batas dan minta persetujuan rekap parsial (allow_partial=true).")
@@ -135,7 +137,7 @@ def evaluate(text: str, *, require_snapshot: bool = True) -> dict:
         snapshot = {"records": records}
     if not records:
         return {"approved": False, "reason": "Tidak ada record untuk disimpan.", "header": [], "rows": []}
-    allowed = {key for key, _ in SHEET_COLUMNS} | {"clear_fields", "report_kind", "needs_cleared", "needs_evidence", "storage_issues", "update_target"}
+    allowed = {key for key, _ in SHEET_COLUMNS} | {"clear_fields", "report_kind", "needs_cleared", "needs_evidence", "storage_issues", "update_target", "storage_baseline", "storage_conflicts", "storage_source"}
     records = [{key: value for key, value in record.items() if key in allowed} for record in records]
 
     stamp = datetime.now(WIB).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M")
@@ -166,6 +168,7 @@ def evaluate(text: str, *, require_snapshot: bool = True) -> dict:
                  "approval": {"confirmed_by_officer": True, "approved_at": stamp, "officer_note": note,
                                "allow_partial": data.get("allow_partial") is True, "approved_clear_fields": data.get("approved_clear_fields", {})}}
     effective["approval"]["clear_decisions"] = decisions if require_snapshot else {}
+    effective['approval']['conflict_decisions'] = data.get('conflict_decisions',{})
     return {"approved": True, "reason": "", "header": header, "rows": rows, "clear_columns": clear_columns,
             "update_targets": [r.get("update_target") for r in records], "effective_payload": effective}
 
@@ -223,6 +226,6 @@ class OfficerConfirmationGate(Component):
             self.stop("rejected")
             return Message(text="")
         self.status = "Ditolak"
-        return Message(text=f"DITOLAK — data TIDAK disimpan. Alasan: {result['reason']} "
+        return Message(text=f"GAGAL: DITOLAK — data TIDAK disimpan. Alasan: {result['reason']} "
                              "Perbaiki payload tanpa membuang aksi yang diminta; officer_note tidak menjalankan clear.\n```json\n" +
                              json.dumps({"status":"rejected","reason":result["reason"],**result.get("clear_options",{})},ensure_ascii=False,indent=2) + "\n```")

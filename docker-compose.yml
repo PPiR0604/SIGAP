@@ -12,16 +12,11 @@ services:
       - SIGAP_DOCKER=1
       - SIGAP_HOST=0.0.0.0
       - SIGAP_PORT=8787
-      - SIGAP_AGENT_PROVIDER=${SIGAP_AGENT_PROVIDER:-gemini}
-      - GEMINI_API_KEY
-      - GEMINI_MODEL
-      - LANGFLOW_MCP_URL
-      - LANGFLOW_API_KEY
-      - SIGAP_DB_PATH=data/sigap.db
-      - SIGAP_SESSION_TOKEN
+      - SIGAP_DB_PATH=/app/state/sigap.db
       - SIGAP_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:80,http://127.0.0.1:80,http://localhost,http://127.0.0.1,http://backend:8787
     volumes:
-      - ./backend/data:/app/data
+      - sigap_backend_state:/app/state
+      - ./backend/data:/app/data:ro
       - ./mcp:/app/mcp:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -54,3 +49,7 @@ services:
 networks:
   sigap-network:
     driver: bridge
+
+volumes:
+  sigap_backend_state:
+    name: sigap_backend_state

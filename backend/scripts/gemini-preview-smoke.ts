@@ -7,7 +7,7 @@ import {parsePrepareNeedsOutput} from '../src/pipeline/toolResults.js';
 import {wrapUntrustedInputForAgent} from '../src/pipeline/pii.js';
 async function main(){
   const runtime=new GeminiAgentRuntime(loadGeminiSettings());
-  if(!await runtime.isAvailable())throw new Error('Isi key Gemini di backend/data/gemini.local.json terlebih dahulu.');
+  if(!await runtime.isAvailable())throw new Error('Isi GEMINI_API_KEY di .env root terlebih dahulu.');
   const config=loadAgentSessionConfig('gemini');const sessionId='gemini-preview-smoke';
   const report='2026-10-08 10:00 | Posko Uji Sintetis, Desa Uji. Total 10 jiwa: 4 laki-laki dan 6 perempuan. Butuh air bersih.';
   let preview:any;

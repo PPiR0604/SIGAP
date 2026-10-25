@@ -45,7 +45,7 @@ export function ChatDock({messages,input,onInput,onSend,onUpload,processing,disp
       <div className="chat-composer">
         <textarea id="report-input" ref={composerRef} rows={3} placeholder="Tempel laporan lapangan di sini, atau tanyakan sesuatu ke Agent…" value={input} onChange={e=>onInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)&&!e.nativeEvent.isComposing){e.preventDefault();send();}}}/>
         <div className="chat-actions">
-          <button type="button" className="button quiet" onClick={onUpload} aria-label="Unggah laporan"><Paperclip size={17} aria-hidden="true"/>Unggah .txt</button>
+          <button type="button" className="button quiet" onClick={onUpload} aria-label="Unggah laporan"><Paperclip size={17} aria-hidden="true"/>Unggah .txt / .csv</button>
           <span className="chat-hint">Ctrl / ⌘ + Enter</span>
           <button type="button" className="button primary chat-send" disabled={!input.trim()||dispatching} onClick={send}>Kirim<ArrowRight size={16} aria-hidden="true"/></button>
         </div>

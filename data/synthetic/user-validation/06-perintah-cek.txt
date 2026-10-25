@@ -1,0 +1,7 @@
+Tolong baca rekap posko yang sudah tersimpan dan ringkas jumlah posko serta total jiwanya.
+
+Periksa kebutuhan di semua desa, termasuk kandidat yang belum disimpan.
+
+Posko mana yang kekurangan air bersih? Tampilkan angka dan dasar perhitungannya. Jangan menebak stok yang belum lengkap.
+
+Tolong susun draf buletin donatur dalam Markdown dari rekap tersimpan. Hanya pratinjau, jangan dipublikasikan.

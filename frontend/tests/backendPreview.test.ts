@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { previewRows, storedRows, mergeCandidateOntoStored, pendingClearFields } from '../src/backendPreview.ts';
+import { previewRows, storedRows, mergeCandidateOntoStored, retainUnchangedCalculations, pendingClearFields,matchesClarificationTarget } from '../src/backendPreview.ts';
+import { applyCalculations,metricValue } from '../src/needs.ts';
 
 test('server candidate controls displayed IDs, unknown values and pending decisions', () => {
   const candidate = { records: [{ report_id: 'R777', shelter_name: 'Posko Baru', village: 'Desa A', total_people: 0, male: null, pending_clear_fields: ['disability', 'notes'] }] };
@@ -77,4 +78,48 @@ test('targeted preview displays canonical replacement and cleared needs exactly'
     assert.deepEqual(result.needs,needs);
     assert.equal(result.status,'Parsial');
   }
+});
+
+test('clarifying one village keeps calculations and reported needs in other villages',()=>{
+  const source=[{report_id:'R001',shelter_name:'Posko A',village:'Desa A',total_people:10,male:4,female:6,urgent_needs:['air']},
+    {report_id:'R002',shelter_name:'Posko B',village:'Desa B',total_people:20,male:9,female:11,urgent_needs:['beras']}];
+  const previous=applyCalculations(previewRows({records:source}),{shelters:source.map(r=>({...r,needs:{air_liter_per_hari:{value:r.total_people*15}},gaps:{air_liter_per_hari:0}}))});
+  const next=retainUnchangedCalculations(previous,previewRows({records:[{...source[0],male:3,female:7},source[1]]}));
+  assert.equal(metricValue(next[1],'air_liter_per_hari'),300);
+  assert.equal(metricValue(next[1],'air_liter_per_hari',true),0);
+  assert.deepEqual(next[1].needs,['beras']);
+  assert.equal(metricValue(next[0],'air_liter_per_hari'),null,'Changed source is invalidated until recalculated');
+});
+
+test('stock changes invalidate cached gaps even when the population is unchanged',()=>{
+  const source={shelter_name:'Posko A',village:'Desa A',total_people:10,stock:{air_liter_per_hari:20}};
+  const previous=applyCalculations(previewRows({records:[source]}),{shelters:[{...source,needs:{air_liter_per_hari:{value:150}},gaps:{air_liter_per_hari:130}}]});
+  const next=retainUnchangedCalculations(previous,previewRows({records:[{...source,stock:{air_liter_per_hari:100}}]}));
+  assert.equal(next[0].gap,null);
+});
+
+test('valid correction awaits storage approval while genuine validation errors still need clarification',()=>{
+  const original={batch_id:'old',report_id:'R002',shelter_name:'Posko Harapan',village:'',total_people:98,male:45,female:55};
+  const corrected={...original,batch_id:'new',report_id:'R001',male:43,update_target:{batch_id:'old',report_id:'R002'},storage_conflicts:[{field:'male',previous_value:45,incoming_value:43}],validation_issues:[{field:'storage_conflicts',reason:'Pilih nilai lama atau baru.'}]};
+  const base=storedRows([original,{...original,village:'Sukamaju',male:43,urgent_needs:['air']}]);
+  const merged=mergeCandidateOntoStored(base,previewRows({records:[corrected]}));
+  assert.equal(merged[0].male,43);
+  assert.equal(merged[0].status,'Menunggu persetujuan');
+  assert.match(merged[0].note,/belum disimpan/);
+  assert.doesNotMatch(merged[0].source,/Dibaca dari rekap yang sudah tersimpan/);
+  assert.deepEqual(merged[1].needs,['air'],'different village record stays unchanged');
+  assert.equal(previewRows({records:[{...corrected,male:44} ]})[0].status,'Perlu klarifikasi');
+});
+
+test('village changes follow source target and candidate lineage while rejecting another same-name target',()=>{
+  const original=storedRows([{batch_id:'stored',report_id:'R002',shelter_name:'Posko Harapan',village:'',total_people:98}])[0];
+  const changed=previewRows({records:[{batch_id:'new',report_id:'R001',shelter_name:'Posko Harapan',village:'Cibineng',total_people:98,update_target:{batch_id:'stored',report_id:'R002'}}]})[0];
+  assert.equal(matchesClarificationTarget(changed,original),true);
+  assert.equal(matchesClarificationTarget({...changed,correctionTarget:{batch_id:'another',report_id:'R002'}},original),false);
+  const pending=previewRows({records:[{batch_id:'pending',report_id:'R001',shelter_name:'Posko Harapan',village:''}]})[0];
+  const continued={...changed,candidateLineage:[{batch_id:'pending',report_id:'R001'}]};
+  assert.equal(matchesClarificationTarget(continued,pending),true);
+  const merged=mergeCandidateOntoStored([original], [continued]);
+  assert.equal(merged.length,1);assert.equal(merged[0].village,'Cibineng');
+  assert.equal(matchesClarificationTarget(merged[0],pending),true);
 });

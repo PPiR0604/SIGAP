@@ -25,13 +25,13 @@ export function validateReportInput(
 
   if (filename) {
     const lowerName = filename.toLowerCase();
-    if (!lowerName.endsWith('.txt')) {
+    if (!lowerName.endsWith('.txt')&&!lowerName.endsWith('.csv')) {
       return {
         valid: false,
         byteLength: 0,
         error: {
           code: 'INVALID_FILE_TYPE',
-          message: 'Format file tidak didukung. Harap unggah file teks dengan ekstensi .txt.'
+          message: 'Format file tidak didukung. Harap unggah .txt atau .csv.'
         }
       };
     }

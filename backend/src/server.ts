@@ -16,6 +16,8 @@ import { logger } from './logging.js';
 import { loadAgentSessionConfig } from './acp/sessionConfig.js';
 import { GeminiAgentRuntime } from './gemini/runtime.js';
 import { loadGeminiSettings } from './gemini/config.js';
+import {OpenAICompatibleRuntime} from './openai/runtime.js';
+import {loadOpenAISettings} from './openai/config.js';
 
 export interface BuildServerOptions {
   config?: AppConfig;
@@ -32,12 +34,13 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<{
 }> {
   const config = options.config || loadConfig();
   const provider = config.agentProvider || 'gemini';
-  if (!['gemini', 'bob', 'mock'].includes(provider)) throw new Error('Agent provider tidak valid.');
+  if (!['gemini', 'openai', 'bob', 'mock'].includes(provider)) throw new Error('Agent provider tidak valid.');
   const repo = options.repo || new SigapRepository(config.dbPath);
 
   let runtime = options.runtime;
   if (!runtime) {
     if (provider === 'gemini') runtime = new GeminiAgentRuntime(loadGeminiSettings());
+    else if(provider==='openai')runtime=new OpenAICompatibleRuntime(loadOpenAISettings());
     else if (provider === 'mock') runtime = new FakeAgentRuntime();
     else {
     const acpRuntime = new AcpProcessRuntime(config.bobCommand, config.bobArgs, config.bobWorkspace);
@@ -50,7 +53,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<{
     }
   }
 
-  const sessionConfig = options.sessionConfig || (runtime instanceof FakeAgentRuntime ? {} : loadAgentSessionConfig(runtime instanceof GeminiAgentRuntime ? 'gemini' : 'bob'));
+  const sessionConfig = options.sessionConfig || (runtime instanceof FakeAgentRuntime ? {} : loadAgentSessionConfig(runtime instanceof OpenAICompatibleRuntime ? 'openai' : runtime instanceof GeminiAgentRuntime ? 'gemini' : 'bob'));
   const mcpConfigured = runtime instanceof GeminiAgentRuntime
     ? !!sessionConfig.mcpServerConfig?.some((server: any) => server.name === 'langflow' && server.type === 'http')
     : !!sessionConfig.mcpServerConfig?.length;

@@ -15,6 +15,7 @@ import csv
 import json
 import re
 from sigap_contracts import save_snapshot, quality_status, load_snapshot, verify_readback
+from sigap_sqlite import read_sqlite
 from datetime import datetime
 from pathlib import Path
 
@@ -218,6 +219,7 @@ class LogisticsStorageReader(Component):
     name = "LogisticsStorageReader"
 
     inputs = [
+        StrInput(name='sqlite_path',display_name='Database Rekap SQLite',value='',advanced=True,info='Path yang sama dengan writer dan validator; kosong memakai environment server.'),
         MessageTextInput(
             name="query",
             display_name="Kueri Pencarian / Sapaan",
@@ -227,9 +229,9 @@ class LogisticsStorageReader(Component):
         DropdownInput(
             name="storage_mode",
             display_name="Mode Penyimpanan",
-            options=["auto", "google_sheets", "csv"],
-            value="auto",
-            info="auto: Google Sheets jika Webhook URL terisi, selain itu CSV.",
+            options=["sqlite", "auto", "google_sheets", "csv"],
+            value="sqlite",
+            info="sqlite: sumber utama rekap; memakai SIGAP_SHELTER_DB_PATH yang sama dengan writer.",
         ),
         SecretStrInput(
             name="webhook_url",
@@ -258,7 +260,7 @@ class LogisticsStorageReader(Component):
     ]
 
     def fetch(self) -> Message:
-        mode = (getattr(self, "storage_mode", None) or "auto").strip()
+        mode = (getattr(self, "storage_mode", None) or "sqlite").strip()
         url = (getattr(self, "webhook_url", None) or "").strip()
         secret = getattr(self, "shared_secret", None) or ""
         csv_path = getattr(self, "csv_path", None) or "output/rekap_posko.csv"
@@ -266,6 +268,18 @@ class LogisticsStorageReader(Component):
         source_info = ""
         observed_storage = {}
         google_read_ok = False
+
+        if mode == 'sqlite':
+            try:
+                data = read_sqlite(getattr(self,'sqlite_path',None))
+                records = build_records(data['header'],data['rows'])
+                source_info = f"SQLite: {data['path']}"
+                observed_storage = {'mode':'sqlite','path':data['path']}
+                self.status = f'{len(records)} posko dibaca dari SQLite'
+            except Exception as exc:
+                return Message(text=f'GAGAL: membaca SQLite: {exc}')
+        elif mode not in ('auto','google_sheets','csv'):
+            return Message(text='GAGAL: mode penyimpanan tidak dikenal.')
 
         # 1. Coba Google Sheets jika mode mengizinkan dan URL terisi
         if mode in ("auto", "google_sheets") and url:

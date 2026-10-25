@@ -3,6 +3,12 @@ import assert from 'node:assert/strict';
 import {storedRows} from '../src/backendPreview.ts';
 import {applyCalculations,metricValue,recapCsv} from '../src/needs.ts';
 
+test('CSV export treats imported names and needs as text instead of spreadsheet formulas',()=>{
+  const rows=storedRows([{shelter_name:'=1+1',village:'@SUM(1)',urgent_needs:['+malicious']}]);
+  const exported=recapCsv(rows);
+  assert.match(exported,/'=1\+1/);assert.match(exported,/'@SUM/);assert.match(exported,/'\+malicious/);
+});
+
 test('all four server needs and shortages attach even when village is unknown',()=>{
   const rows=storedRows([{report_id:'R002',shelter_name:'Posko Harapan',village:'',total_people:98,urgent_needs:['popok','obat']}]);
   const calculated=applyCalculations(rows,{shelters:[{shelter_name:'Posko Harapan',village:'',needs:{air_liter_per_hari:{value:1470},kkal_per_hari:{value:205800},jamban_unit:{value:5},ruang_hunian_m2:{value:343}},gaps:{air_liter_per_hari:0,jamban_unit:2}}]});

@@ -1,0 +1,76 @@
+import {test,expect} from './fixtures';
+
+test('klarifikasi bergantian mempertahankan kandidat dan persetujuan masing-masing posko',async({page},testInfo)=>{
+  let eventId=0;
+  const events:{id:number;body:string}[]=[];
+  const emit=(event:string,data:any)=>{const id=++eventId;events.push({id,body:`id: ${id}\nevent: ${event}\ndata: ${JSON.stringify(data)}\n\n`});};
+  const batchA='a'.repeat(32),batchB='b'.repeat(32),batchA2='c'.repeat(32);
+  const a={batch_id:'stored-a',report_id:'R002',shelter_name:'Posko Harapan',village:'Desa A',total_people:98,male:43,female:55,elderly:12};
+  const b={batch_id:'stored-b',report_id:'R001',shelter_name:'Posko Cibening',village:'Desa B',total_people:100,male:55,female:45,elderly:7};
+  const candidate=(record:typeof a,batch:string,elderly:number,supersedes:string[]=[])=>({batch_id:batch,snapshot_id:batch,superseded_snapshot_ids:supersedes,records:[{...record,batch_id:`source-${batch}`,report_id:'R001',elderly,storage_conflicts:[{field:'elderly',previous_value:record.elderly,incoming_value:elderly}],update_target:{batch_id:record.batch_id,report_id:record.report_id}}]});
+  const decisions:{batch:string;body:any}[]=[];
+  await page.route(/^https:\/\/fonts\.(googleapis|gstatic)\.com\//,r=>r.abort());
+  await page.route('**/api/sessions/*/events',r=>r.fulfill({contentType:'text/event-stream',body:events.filter(e=>e.id>Number(r.request().headers()['last-event-id']||0)).map(e=>e.body).join('')||': keepalive\n\n'}));
+  await page.route('**/api/batches/*/decisions',r=>{decisions.push({batch:r.request().url().split('/').at(-2)!,body:r.request().postDataJSON()});return r.fulfill({status:202,json:{success:true,status:'saving'}});});
+  await page.goto('/');await page.getByRole('button',{name:'Rekap',exact:true}).click();
+  emit('stored_rekap_ready',{records:[a,b]});
+  await expect(page.locator('tbody tr')).toHaveCount(2);
+  for(const [record,batch,elderly,supersedes] of [[a,batchA,16,[]],[b,batchB,8,[]],[a,batchA2,17,[batchA]]] as const){
+    emit('preview_ready',candidate(record,batch,elderly,[...supersedes]));
+    emit('processing_completed',{batch_id:batch});
+    await expect(page.getByLabel('Kandidat untuk disetujui')).toHaveValue(batch);
+  }
+  await expect(page.getByLabel('Kandidat untuk disetujui').locator('option')).toHaveCount(2);
+  await expect(page.locator('tbody tr')).toHaveCount(2);
+  const checkDetail=async(name:string,elderly:string)=>{
+    await page.getByRole('button',{name,exact:true}).click();
+    const dialog=page.getByRole('dialog',{name:'Detail laporan'});
+    await expect(dialog.locator('.detail-grid div').filter({has:page.getByText('Lansia',{exact:true})})).toContainText(elderly);
+    return dialog;
+  };
+  let dialog=await checkDetail('Posko Cibening','8');
+  await dialog.getByRole('button',{name:'Tinjau & simpan perubahan'}).click();
+  await expect(page.locator('.approval-scope')).toContainText('Posko Cibening');
+  await expect(page.locator('.approval-scope')).not.toContainText('Posko Harapan');
+  await page.getByLabel('Konflik R001 elderly').selectOption('incoming');
+  await page.getByLabel(/Saya menyetujui keputusan penyimpanan/).check();
+  await page.getByRole('button',{name:'Kembali periksa'}).click();
+  // Switching scope must clear consent even though both candidates use R001.
+  await page.getByLabel('Kandidat untuk disetujui').selectOption(batchA2);
+  await page.getByRole('button',{name:'Tinjau & setujui'}).click();
+  await expect(page.getByLabel(/Saya menyetujui keputusan penyimpanan/)).not.toBeChecked();
+  await expect(page.getByLabel('Konflik R001 elderly')).toHaveValue('');
+  await expect(page.locator('.approval-scope')).toContainText('Posko Harapan');
+  await page.getByLabel('Konflik R001 elderly').selectOption('incoming');
+  await page.getByLabel(/Saya memahami rekap masih parsial/).check();
+  await page.getByLabel(/Saya menyetujui keputusan penyimpanan/).check();
+  await page.getByRole('button',{name:'Konfirmasi persetujuan'}).click();
+  await expect.poll(()=>decisions.length).toBe(1);
+  expect(decisions[0].batch).toBe(batchA2);expect(decisions[0].body.snapshot_id).toBe(batchA2);
+  expect(decisions[0].body.conflict_decisions).toEqual({R001:{elderly:'incoming'}});
+  emit('readback_result',{batch_id:batchA2,verification_status:'verified',records:[{...a,elderly:17},b]});
+  emit('processing_completed',{batch_id:batchA2});
+  await expect(page.getByLabel('Kandidat untuk disetujui')).toHaveValue(batchB);
+  await expect(page.getByLabel('Kandidat untuk disetujui').locator('option')).toHaveCount(1);
+  emit('calculation_ready',{batch_id:batchB,shelters:[{shelter_name:b.shelter_name,village:b.village,needs:{air_liter_per_hari:{value:1500}}}]});
+  dialog=await checkDetail('Posko Cibening','8');
+  await expect(dialog.getByRole('region',{name:'Hasil perhitungan kebutuhan'})).toContainText('1.500 L/hari');
+  emit('calculation_ready',{batch_id:batchA2,shelters:[{shelter_name:b.shelter_name,village:b.village,needs:{air_liter_per_hari:{value:999}}}]});
+  await expect(dialog.getByRole('region',{name:'Hasil perhitungan kebutuhan'})).toContainText('1.500 L/hari');
+  await dialog.getByRole('button',{name:'Tutup dialog'}).click();
+  await page.screenshot({path:testInfo.outputPath('dua-kandidat-terpisah.png'),fullPage:true});
+  dialog=await checkDetail('Posko Harapan','17');
+  await expect(dialog.getByRole('button',{name:'Tinjau & simpan perubahan'})).toHaveCount(0);
+  await dialog.getByRole('button',{name:'Tutup dialog'}).click();
+  dialog=await checkDetail('Posko Cibening','8');
+  await dialog.getByRole('button',{name:'Tinjau & simpan perubahan'}).click();
+  await expect(page.getByLabel(/Saya menyetujui keputusan penyimpanan/)).not.toBeChecked();
+  await expect(page.getByLabel('Konflik R001 elderly')).toHaveValue('');
+  await page.getByLabel('Konflik R001 elderly').selectOption('keep');
+  await page.getByLabel(/Saya memahami rekap masih parsial/).check();
+  await page.getByLabel(/Saya menyetujui keputusan penyimpanan/).check();
+  await page.getByRole('button',{name:'Konfirmasi persetujuan'}).click();
+  await expect.poll(()=>decisions.length).toBe(2);
+  expect(decisions[1].batch).toBe(batchB);expect(decisions[1].body.snapshot_id).toBe(batchB);
+  expect(decisions[1].body.conflict_decisions).toEqual({R001:{elderly:'keep'}});
+});

@@ -25,7 +25,7 @@
 .chat-message .chat-markdown { font-size: var(--fs-body); line-height: 1.7; margin-top: 0; }
 .chat-message .chat-markdown h1, .chat-message .chat-markdown h2, .chat-message .chat-markdown h3,
 .chat-message .chat-markdown h4, .chat-message .chat-markdown h5, .chat-message .chat-markdown h6 { font-size: var(--fs-body); }
-.chat-message .chat-table table { font-size: var(--fs-small); }
+.chat-message .markdown-table table { font-size: var(--fs-small); }
 .chat-dock-processing { padding: 8px 0; font-size: var(--fs-small); color: var(--muted); }
 .chat-dock-latest { position: absolute; right: 16px; bottom: 12px; display: flex; align-items: center; gap: 6px; min-height: 36px; padding: 6px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 999px; font-size: var(--fs-tiny); font-weight: 600; box-shadow: var(--shadow); }
 

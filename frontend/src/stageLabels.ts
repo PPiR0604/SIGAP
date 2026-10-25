@@ -3,7 +3,10 @@ const labels: Record<string, string> = {
   prepare_needs: 'Mengekstrak data dari laporan',
   source_prepared: 'Mengekstrak data dari laporan',
   validate_needs: 'Memeriksa dan memvalidasi data',
-  calculate_gap: 'Menghitung kebutuhan air',
+  calculate_gap: 'Menghitung kebutuhan posko',
+  calculate_gap_all: 'Memeriksa kebutuhan seluruh desa',
+  recalculate_correction: 'Menghitung ulang kebutuhan setelah koreksi',
+  calculate_saved: 'Menghitung kebutuhan dari rekap yang sudah disimpan',
   flag_anomalies: 'Memeriksa kejanggalan data',
   upsert_shelter: 'Menyimpan rekap',
   draft_bulletin: 'Menyusun draf buletin',
@@ -24,4 +27,7 @@ export function stageLabel(stage?: string): string { return labels[canonical(sta
 /** Tahap yang menandakan alur laporan (bukan sekadar chat atau pembacaan). */
 export function isReportStage(stage?: string): boolean {
   return ['prepare_needs', 'source_prepared', 'validate_needs', 'upsert_shelter'].includes(canonical(stage));
+}
+export function isReadOnlyStage(stage?:string):boolean{
+  return ['fetch_shelters','storage_read','calculate_gap','calculate_gap_all','flag_anomalies','draft_bulletin','calculate_saved'].includes(canonical(stage));
 }

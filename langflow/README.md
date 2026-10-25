@@ -1,9 +1,11 @@
 # SIGAP (Sistem Intelijen Logistik dan Asisten Posko) — Flow Langflow
 
+**Pembaruan 22 Oktober 2026:** sumber utama rekap sekarang SQLite milik Langflow. Ekspor reader/writer/validator telah diperbarui beserta pemeriksaan konflik, persetujuan per field, transaksi dan riwayat perubahan. Impor CSV tersedia di web. Panduan terbaru: [SQLITE_MIGRATION.md](SQLITE_MIGRATION.md). Keterangan CSV/Sheets di bagian historis berikut menjelaskan adaptor lama.
+
 Tujuh export flow untuk di-import dan diuji di **Langflow Desktop**. Export terbaru dibangun offline memakai template node versi **1.12.4**; kompatibilitas versi lain dan eksekusi Playground belum dibuktikan oleh build ini.
 Setiap flow = satu tool MCP yang dipanggil IBM Bob.
 
-**Status demo per 3 Oktober 2026:** ekspor dialog lengkap Bob `8e326488…` menunjukkan panggilan ketujuh tool sampai kalkulasi dan pratinjau buletin. Bob melaporkan 28 posko tersimpan, clear disability R038 diterapkan, dan read-back `verified`; kalkulator/buletin memakai referensi berikutnya setelah read-back yang sama. Respons mentah backend/versi runtime belum lengkap dan Google Docs belum dibuat dalam dialog. Dokumentasi acuan tersedia di folder repository.
+**Status demo per 3 Oktober 2026:** ekspor dialog lengkap Bob `8e326488…` menunjukkan panggilan ketujuh tool sampai kalkulasi dan pratinjau buletin. Bob melaporkan 28 posko tersimpan, clear disability R038 diterapkan, dan read-back `verified`; kalkulator/buletin memakai referensi berikutnya setelah read-back yang sama. Respons mentah backend/versi runtime belum lengkap dan Google Docs belum dibuat dalam dialog. Dokumentasi acuan tersedia di folder pengujian.
 
 Hasil pengujian kode terakhir yang tercatat: **156 tes Python dan 9 tes Apps Script mock lulus**. Metadata export `runtime_validation: pending` mengacu build offline; bukti dialog pengguna dicatat terpisah. Pembaruan dokumentasi ini tidak menjadi hasil tes baru.
 

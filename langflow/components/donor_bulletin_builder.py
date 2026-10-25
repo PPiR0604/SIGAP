@@ -351,8 +351,6 @@ def build_bulletin(records: list[dict], disaster_name: str, contact: str, now: d
         "## Cara menyalurkan",
         f"Koordinasikan dahulu dengan Pos Komando: {contact}. Kirim ke gudang/posko utama, bukan langsung ke tenda, "
         "agar distribusi merata. Utamakan barang baru dan sesuai daftar di atas.",
-        "",
-        "_Disusun dari laporan posko; persetujuan rekap tidak membuktikan kondisi lapangan terkini. Tidak memuat data pribadi pengungsi._",
     ]
     return "\n".join(lines)
 

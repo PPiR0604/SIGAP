@@ -17,6 +17,12 @@ dist/
 .next/
 coverage/
 *.tsbuildinfo
+playwright-report/
+test-results/
+.playwright-mcp/
+playwright-report-live/
+test-results-live/
+test-results-user-validation/
 
 # Local secrets and runtime state
 .env

@@ -10,7 +10,8 @@ export const DecisionRequestBodySchema = z.object({
   action: z.enum(['approve_save', 'approve_partial_save', 'back_to_review']),
   snapshot_id: z.string().regex(/^[a-f0-9]{32}$/, 'snapshot_id tidak valid'),
   partial_acknowledged: z.boolean().default(false),
-  clear_decisions: z.record(z.string(), z.record(z.string(), ClearDecisionChoice)).default({})
+  clear_decisions: z.record(z.string(), z.record(z.string(), ClearDecisionChoice)).default({}),
+  conflict_decisions: z.record(z.string(),z.record(z.string(),z.enum(['keep','incoming']))).optional()
 });
 
 export type DecisionRequestBody = z.infer<typeof DecisionRequestBodySchema>;
@@ -86,11 +87,17 @@ export function validateAndCreateApproval(
   }
 
   const records: any[] = payload.records || [];
+  const conflictMap = Object.fromEntries(records.map(r=>[r.report_id,(r.storage_conflicts||[]).map((c:any)=>c.field)]));
+  for(const [report,fields] of Object.entries(conflictMap))for(const field of fields as string[]){
+    if(!body.conflict_decisions?.[report]?.[field])return {valid:false,code:'INCOMPLETE_CONFLICT_DECISIONS',message:`Putuskan konflik ${report} (${field}): gunakan nilai tersimpan atau nilai laporan baru.`};
+  }
+  for(const [report,choices] of Object.entries(body.conflict_decisions||{}))if(Object.keys(choices).some(field=>!conflictMap[report]?.includes(field)))return {valid:false,code:'INVALID_CONFLICT_DECISIONS',message:'Keputusan konflik harus sesuai field pada pratinjau.'};
   const hasIssues = !!payload.issues?.length || !!payload.snapshot_issues?.length || records.some(
     (r) =>
       (r.missing_fields && r.missing_fields.length > 0) ||
       (r.validation_issues && r.validation_issues.length > 0) ||
       (r.unverified_numbers && r.unverified_numbers.length > 0) ||
+      (r.storage_conflicts && r.storage_conflicts.length > 0) ||
       (r.pending_clear_fields && r.pending_clear_fields.length > 0)
   );
 
@@ -137,14 +144,15 @@ export function validateAndCreateApproval(
     action: body.action,
     snapshotId: snapshot.snapshot_id,
     snapshotSha256: snapshot.snapshot_sha256,
-    partialScope: { partial_acknowledged: body.partial_acknowledged },
+    partialScope: { partial_acknowledged: body.partial_acknowledged, conflict_decisions:body.conflict_decisions||{} },
     clearDecisions: body.clear_decisions
   });
 
   repo.logAudit('APPROVAL_CREATED', actorId, batch.batch_id, {
     snapshot_id: snapshot.snapshot_id,
     action: body.action,
-    clear_decisions: body.clear_decisions
+    clear_decisions: body.clear_decisions,
+    conflict_decisions:body.conflict_decisions||{}
   });
 
   return {
@@ -246,6 +254,7 @@ export function buildApprovedWritePayload(approval: ApprovalRecord): Record<stri
     clear_decisions: decisions,
     approved_clear_fields: clear,
     confirmed_clear_fields: Object.keys(clear).length > 0,
-    confirmed_clear_decisions: Object.keys(decisions).length > 0
+    confirmed_clear_decisions: Object.keys(decisions).length > 0,
+    ...(Object.keys(JSON.parse(approval.partial_scope_json||'{}').conflict_decisions||{}).length?{conflict_decisions:JSON.parse(approval.partial_scope_json||'{}').conflict_decisions}:{})
   };
 }

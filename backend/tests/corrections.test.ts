@@ -66,6 +66,7 @@ test('a second draft continues pending correction and revokes the previous candi
   assert.deepEqual(input.candidate_target,{snapshot_id:'3'.repeat(32),snapshot_sha256:'d'.repeat(64),record_index:0});
   assert.equal(result.previousSuperseded,'4'.repeat(32));
   assert.equal(result.previousApproval,'revoked');
+  assert.deepEqual(result.events.find(event=>event.type==='preview_ready')?.payload.superseded_snapshot_ids,['3'.repeat(32)]);
 });
 
 test('clarification can edit an unsaved candidate when storage is empty',async()=>{
@@ -91,4 +92,12 @@ test('ambiguous candidate never falls back to a uniquely matching stored row',as
   assert.equal(result.status,'failed');
   assert.equal(result.previousSuperseded,null);
   assert.equal(result.previousApproval,'pending');
+});
+
+test('a correction cannot silently replace a multi-village candidate with one village',async()=>{
+  const result=await prepare([],'Mohon klarifikasi laporan R002 (Posko Harapan): lansia: 17','new',
+    [row,{...row,report_id:'R003',shelter_name:'Posko Lain',village:'Desa Lain',urgent_needs:['beras']}]);
+  assert.equal(result.status,'payload_invalid');
+  assert.equal(result.previousSuperseded,null);
+  assert.ok(result.events.some(event=>event.type==='error'&&event.payload.code==='PAYLOAD_INVALID'));
 });

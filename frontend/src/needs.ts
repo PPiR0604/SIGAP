@@ -29,7 +29,7 @@ export function metricValue(row:Shelter,key:RequirementKey,shortage=false):numbe
 export function recapCsv(rows:Shelter[],key?:RequirementKey):string{
   const metric=metrics.find(m=>m.key===key);
   const unknown=(value:number|null)=>value??'Belum diketahui';
-  const escape=(value:unknown)=>{const s=String(value);return /[",\r\n]/.test(s)?`"${s.replaceAll('"','""')}"`:s;};
+  const escape=(value:unknown)=>{const raw=String(value),s=/^[=+@\-\t\r]/.test(raw)?"'"+raw:raw;return /[",\r\n]/.test(s)?`"${s.replaceAll('"','""')}"`:s;};
   const header=['Posko','Desa','Kebutuhan dilaporkan',...(metric?[`Kebutuhan ${metric.label} (${metric.unit})`,`Kekurangan (${metric.unit})`]:['Jiwa','Status'])];
   const lines=rows.map(row=>[row.name,row.village,row.needs.join('; ')||'Belum dilaporkan',...(key?[unknown(metricValue(row,key)),unknown(metricValue(row,key,true))]:[unknown(row.people),row.status])]);
   return [header,...lines].map(line=>line.map(escape).join(',')).join('\n');

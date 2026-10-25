@@ -1,0 +1,142 @@
+import { test, expect } from '@playwright/test';
+
+test('CSV → LLM → Langflow SQLite: seluruh baris menjadi kandidat dan dihitung tanpa write',async({page},testInfo)=>{
+  await page.route(/^https:\/\/fonts\.(googleapis|gstatic)\.com\//,r=>r.abort());
+  const connected=page.waitForResponse(r=>r.url().endsWith('/api/sessions')&&r.ok());await page.goto('/');await connected;
+  const csv='posko,desa,jumlah_jiwa,laki_laki,perempuan,kebutuhan_mendesak,waktu_laporan\nPosko Impor CSV Alpha,Desa Uji Alpha,10,4,6,air bersih,2026-10-22 20:00\nPosko Impor CSV Beta,Desa Uji Beta,20,9,11,beras,2026-10-22 20:00';
+  let writes=0;page.on('request',r=>{if(/\/decisions$/.test(r.url()))writes++;});
+  await page.locator('input[type=file]').setInputFiles({name:'uji-impor.csv',mimeType:'text/csv',buffer:Buffer.from(csv)});
+  const accepted=page.waitForResponse(r=>/\/messages$/.test(r.url())&&r.ok());
+  await page.getByRole('button',{name:'Kirim',exact:true}).click();
+  const id=(await(await accepted).json()).batch_id;
+  const token=await page.evaluate(()=>localStorage.getItem('sigap_token'));let batch:any;
+  await expect.poll(async()=>{batch=await(await page.request.get(`/api/batches/${id}`,{headers:{Authorization:`Bearer ${token}`}})).json();return batch.gap?.shelters?.length===2||['failed','payload_invalid','needs_review'].includes(batch.status);},{timeout:150_000}).toBe(true);
+  expect(batch.status).toBe('ready_for_review');expect(batch.preview.records).toHaveLength(2);
+  expect(batch.preview.records.map((r:any)=>r.shelter_name).sort()).toEqual(['Posko Impor CSV Alpha','Posko Impor CSV Beta']);
+  expect(batch.gap.shelters.map((r:any)=>r.needs.air_liter_per_hari.value).sort((a:number,b:number)=>a-b)).toEqual([150,300]);
+  expect(batch.gap.automatic_recalculation).toBe(true);expect(writes).toBe(0);
+  await page.getByRole('button',{name:'Rekap',exact:true}).click();await page.getByLabel('Cari posko atau desa').fill('Impor CSV');
+  await expect(page.locator('tbody tr')).toHaveCount(2);await page.getByRole('button',{name:'Kebutuhan',exact:true}).click();
+  await expect(page.locator('tbody')).toContainText('150 L/hari');await expect(page.locator('tbody')).toContainText('300 L/hari');
+  await page.screenshot({path:testInfo.outputPath('live-impor-csv.png'),fullPage:true});
+  await testInfo.attach('csv-import-summary',{contentType:'application/json',body:Buffer.from(JSON.stringify({rows:2,calculated:2,external_write:false}))});
+});
+
+test('web → LLM → Langflow: kandidat sintetis, kalkulasi, dan HITL tanpa write', async ({ page }, testInfo) => {
+  const errors: string[] = [];
+  const writes: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('request', request => { if (/\/decisions$/.test(request.url())) writes.push(request.url()); });
+  await page.route(/^https:\/\/fonts\.(googleapis|gstatic)\.com\//, route => route.abort());
+  const connected = page.waitForResponse(r => r.url().endsWith('/api/sessions') && r.ok());
+  await page.goto('/');
+  await connected;
+  await expect(page.getByRole('button', { name: 'LLM dikonfigurasi', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Backend Mock', exact: true })).toHaveCount(0);
+  const composer = page.getByRole('textbox', { name: 'Laporan atau pertanyaan Anda' });
+  const token = await page.evaluate(() => localStorage.getItem('sigap_token'));
+  const headers = { Authorization: `Bearer ${token}` };
+  const health = await (await page.request.get('/api/health')).json();
+  expect(['gemini','openai']).toContain(health.agent);
+  await testInfo.attach('live-provider',{contentType:'application/json',body:Buffer.from(JSON.stringify({agent:health.agent,model:health.model}))});
+  expect(health.mode).toBe('live');
+  const text = '21/10/2026 16.00 - Relawan: Posko Uji Playwright di Desa Uji Otomatis. Total 10 jiwa: 4 laki-laki dan 6 perempuan. Lansia 1, disabilitas 0. Butuh air bersih dan beras. Data sintetis untuk pengujian, bukan laporan operasional.';
+  const accepted = page.waitForResponse(r => /\/messages$/.test(r.url()) && r.ok());
+  await composer.fill(text);
+  await page.getByRole('button', { name: 'Kirim', exact: true }).click();
+  const { batch_id: batchId } = await (await accepted).json();
+  const getBatch = async (id: string) => (await page.request.get(`/api/batches/${id}`, { headers })).json();
+  let batch: any;
+  await expect.poll(async () => {
+    batch = await getBatch(batchId);
+    return batch.status;
+  }, { timeout: 150_000, message: 'Real Langflow must produce a valid review candidate, not merely a configured health check.' }).toMatch(/ready_for_review|failed|payload_invalid|needs_review|conversation_done/);
+  await testInfo.attach('live-batch-summary', { contentType: 'application/json', body: Buffer.from(JSON.stringify({ batch_id: batchId, status: batch.status, snapshot_id: batch.latest_snapshot_id, record_count: batch.preview?.records?.length, external_write: false }, null, 2)) });
+  expect(batch.status).toBe('ready_for_review');
+  expect(batch.latest_snapshot_id).toMatch(/^[a-f0-9]{32}$/);
+  const candidate = batch.preview.records.find((r: any) => r.shelter_name === 'Posko Uji Playwright');
+  expect(candidate).toMatchObject({ total_people: 10, male: 4, female: 6, disability: 0 });
+  await page.getByRole('button', { name: 'Rekap', exact: true }).click();
+  await page.getByLabel('Cari posko atau desa').fill('Uji Playwright');
+  await expect(page.locator('tbody tr')).toHaveCount(1);
+  await expect(page.locator('tbody tr')).toContainText('10');
+  await expect(page.getByRole('button', { name: 'Tinjau & setujui' })).toBeEnabled({ timeout: 60_000 });
+  await page.getByRole('button', { name: 'Tinjau & setujui' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Tinjau persetujuan' });
+  await dialog.getByRole('button', { name: 'Konfirmasi persetujuan' }).click();
+  await expect(dialog.getByRole('alert')).toHaveText('Berikan persetujuan eksplisit atas pratinjau ini.');
+  expect(writes).toHaveLength(0);
+  await dialog.getByRole('button', { name: 'Tutup dialog' }).click();
+  await page.screenshot({ path: testInfo.outputPath('live-rekap.png'), fullPage: true });
+
+  // Correct the same candidate directly in its detail dialog, through real validation.
+  await page.getByRole('button', { name: 'Posko Uji Playwright', exact: true }).click();
+  const detailDialog = page.getByRole('dialog', { name: 'Detail laporan' });
+  await detailDialog.getByRole('button', { name: 'Tulis klarifikasi' }).click();
+  await detailDialog.getByRole('spinbutton', { name: 'Jumlah jiwa', exact: true }).fill('12');
+  await detailDialog.getByRole('spinbutton', { name: 'Laki-laki', exact: true }).fill('5');
+  await detailDialog.getByRole('spinbutton', { name: 'Perempuan', exact: true }).fill('7');
+  const correctionAccepted = page.waitForResponse(r => /\/messages$/.test(r.url()) && r.ok());
+  await detailDialog.getByRole('button', { name: 'Validasi perubahan' }).click();
+  const correctionId = (await (await correctionAccepted).json()).batch_id;
+  const previousSnapshot = batch.latest_snapshot_id;
+  await expect.poll(async () => {
+    batch = await getBatch(correctionId);
+    return batch.status;
+  }, { timeout: 100_000 }).toMatch(/ready_for_review|failed|payload_invalid|needs_review|conversation_done/);
+  expect(batch.status).toBe('ready_for_review');
+  expect(batch.latest_snapshot_id).not.toBe(previousSnapshot);
+  expect(batch.preview.records.find((r: any) => r.shelter_name === 'Posko Uji Playwright')).toMatchObject({ total_people: 12, male: 5, female: 7 });
+  await expect(detailDialog.getByRole('status')).toContainText('Kandidat baru diterima');
+  await expect(detailDialog.getByRole('button', { name: 'Tulis klarifikasi' })).toBeEnabled({ timeout: 60_000 });
+  await expect(detailDialog.locator('.detail-grid').first()).toContainText('5');
+  await expect(detailDialog.getByRole('status')).toContainText('Kebutuhan sudah dihitung ulang');
+  await expect(detailDialog.getByRole('region', { name: 'Hasil perhitungan kebutuhan' })).toContainText('180 L/hari');
+  await expect(page.getByRole('navigation').getByRole('button', { name: 'Rekap', exact: true })).toHaveAttribute('aria-current', 'page');
+  await page.screenshot({ path: testInfo.outputPath('live-klarifikasi.png'), fullPage: true });
+  await detailDialog.getByRole('button', { name: 'Tutup dialog' }).click();
+
+  // The correction itself must calculate the new population without another chat request.
+  const calculationId = correctionId;
+  let calculation: any;
+  await expect.poll(async () => {
+    calculation = await getBatch(calculationId);
+    return calculation.gap?.shelters?.length > 0 || ['failed', 'payload_invalid'].includes(calculation.status);
+  }, { timeout: 100_000, message: 'Calculation must come from the real Langflow calculator.' }).toBe(true);
+  const calculated = calculation.gap?.shelters?.find((r: any) => r.shelter_name === 'Posko Uji Playwright');
+  expect(calculated?.needs.air_liter_per_hari.value).toBe(180);
+  expect(calculated?.needs.kkal_per_hari.value).toBe(25200);
+  expect(calculated?.needs.jamban_unit.value).toBe(1);
+  expect(calculated?.needs.ruang_hunian_m2.value).toBe(42);
+  expect(calculation.gap.automatic_recalculation).toBe(true);
+  await page.getByRole('button', { name: 'Kebutuhan', exact: true }).click();
+  await expect(page.locator('tbody tr')).toContainText('180 L/hari');
+  await expect.poll(async () => {
+    calculation = await getBatch(calculationId);
+    return calculation.status;
+  }, { timeout: 60_000, message: 'The correction remains pending human approval after calculation.' }).toMatch(/ready_for_review|failed|payload_invalid|needs_review/);
+  expect(calculation.status).toBe('ready_for_review');
+  expect(calculation.gap.snapshot_id).toBe(batch.latest_snapshot_id);
+  await page.screenshot({ path: testInfo.outputPath('live-kebutuhan.png'), fullPage: true });
+  expect(writes).toHaveLength(0);
+  expect(errors).toEqual([]);
+  await testInfo.attach('live-calculation-summary', { contentType: 'application/json', body: Buffer.from(JSON.stringify({ status: calculation.status, snapshot_id: calculation.gap.snapshot_id, needs: calculated.needs, external_write: false }, null, 2)) });
+
+  await page.getByRole('button',{name:'Laporan',exact:true}).click();
+  const allAccepted=page.waitForResponse(r=>/\/messages$/.test(r.url())&&r.ok());
+  await composer.fill('Tolong periksa kebutuhan di semua desa, termasuk kandidat yang baru saya klarifikasi.');
+  await page.getByRole('button',{name:'Kirim',exact:true}).click();
+  const allId=(await(await allAccepted).json()).batch_id;let all:any;
+  await expect.poll(async()=>{all=await getBatch(allId);return all.status;},{timeout:100_000}).toMatch(/conversation_done|failed|payload_invalid/);
+  expect(all.status).toBe('conversation_done');expect(all.gap.scope).toBe('all_shelters');
+  expect(all.gap.shelters.length).toBeGreaterThan(1);
+  expect(all.gap.shelters.find((r:any)=>r.shelter_name==='Posko Uji Playwright').total_people).toBe(12);
+  expect(all.gap.snapshot_refs.some((r:any)=>r.kind==='stored')).toBe(true);
+  expect(all.gap.snapshot_refs.some((r:any)=>r.kind==='candidate')).toBe(true);
+  await expect(page.getByRole('log')).toContainText(`Kebutuhan seluruh rekap — ${all.gap.shelters.length} posko.`);
+  await page.getByRole('button',{name:'Rekap',exact:true}).click();
+  await page.getByLabel('Cari posko atau desa').fill('');
+  await expect(page.locator('tbody tr')).toHaveCount(all.gap.shelters.length);
+  expect(writes).toHaveLength(0);
+  await testInfo.attach('all-villages-summary',{contentType:'application/json',body:Buffer.from(JSON.stringify({count:all.gap.shelters.length,scope:all.gap.scope,pending_candidates:all.gap.pending_candidates,external_write:false}))});
+});

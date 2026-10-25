@@ -5,6 +5,7 @@ import type { SigapRepository } from '../db/repo.js';
 import type { BatchOrchestrator } from '../pipeline/orchestrator.js';
 import { validateReportInput } from '../pipeline/inputValidation.js';
 import { filterPii } from '../pipeline/pii.js';
+import {csvReports} from '../pipeline/csvImport.js';
 import type { AppConfig } from '../config.js';
 
 const MessageBodySchema = z.object({
@@ -82,7 +83,11 @@ export function createMessagesRoute(
       const firstTurn = repo.countBatches(sessionId) === 0;
 
       // 6. PII filtering
-      const { filteredText, piiSummary } = filterPii(text);
+      const csv=filename?.toLowerCase().endsWith('.csv');
+      let source=text;
+      let expectedReportCount:number|undefined;
+      if(csv){try{const imported=csvReports(text,config.maxInputBytes);source=imported.text;expectedReportCount=imported.rows;}catch(error){return reply.code(422).send({error:{code:'INVALID_CSV',message:error instanceof Error?error.message:'CSV tidak valid.'}});}}
+      const { filteredText, piiSummary } = filterPii(source);
 
       // 7. Create batch in DB
       const batch = repo.createBatch({
@@ -105,7 +110,9 @@ export function createMessagesRoute(
           requestId,
           contextId: session.context_id,
           filteredText,
-          firstTurn
+          firstTurn,
+          sourceFormat:csv?'csv':undefined,
+          expectedReportCount
         }).catch((err) => {
           // Handled inside orchestrator
         });
