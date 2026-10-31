@@ -1,16 +1,16 @@
 import type { FastifyPluginAsync } from 'fastify';
-import type { SigapRepository } from '../db/repo.js';
+import type { Repository } from '../db/contract.js';
 import type { BatchOrchestrator } from '../pipeline/orchestrator.js';
 
 export function createEventsRoute(
-  repo: SigapRepository,
+  repo: Repository,
   orchestrator: BatchOrchestrator
 ): FastifyPluginAsync {
   return async (fastify) => {
     fastify.get('/api/sessions/:id/events', async (request, reply) => {
       const { id: sessionId } = request.params as { id: string };
 
-      const session = repo.getSession(sessionId);
+      const session = (await repo.getSession(sessionId));
       if (!session) {
         return reply.code(404).send({
           error: {
@@ -33,7 +33,7 @@ export function createEventsRoute(
       const startAfterId = Number(lastEventIdHeader || queryLastId || 0);
 
       // Replay existing events
-      const pastEvents = repo.getEventsAfter(sessionId, startAfterId);
+      const pastEvents = (await repo.getEventsAfter(sessionId, startAfterId));
       for (const ev of pastEvents) {
         reply.raw.write(`id: ${ev.event_id}\n`);
         reply.raw.write(`event: ${ev.event_type}\n`);
@@ -58,12 +58,16 @@ export function createEventsRoute(
       orchestrator.on('event', liveListener);
 
       // Heartbeat every 15s
-      const heartbeatTimer = setInterval(() => {
+      let checking=false;
+      const heartbeatTimer = setInterval(async () => {
+        if(checking)return;checking=true;
         try {
+          if(request.principal&&orchestrator.auth){if(request.principal.expiresAt<=Date.now())throw new Error('Session expired');await orchestrator.auth.stillAuthorized(request.principal.userId,request.principal.sessionId,session.context_id);}
           reply.raw.write(': heartbeat\n\n');
         } catch {
           clearInterval(heartbeatTimer);
-        }
+          orchestrator.off('event',liveListener);reply.raw.end();
+        }finally{checking=false;}
       }, 15000);
 
       // Cleanup when connection closes

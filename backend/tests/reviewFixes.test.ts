@@ -19,80 +19,80 @@ function fixture() {
 }
 const decision = { action: 'approve_save' as const, snapshot_id: id, partial_acknowledged: false, clear_decisions: {} };
 
-test('snapshot-level conflicts require partial acknowledgement even if record fields are complete',()=>{
+test('snapshot-level conflicts require partial acknowledgement even if record fields are complete',async ()=>{
   const {repo,batch}=fixture();
   try{
     const newer='3'.repeat(32);
     repo.saveSnapshot({snapshotId:newer,snapshotSha256:sha,batchId:batch.batch_id,version:2,qualityStatus:'PERLU_KLARIFIKASI',payload:{records:[{report_id:'R1',total_people:10}],issues:[{detail:'Konflik antar laporan'}]}});
-    assert.equal(validateAndCreateApproval(repo,repo.getBatch(batch.batch_id)!,'actor',{...decision,snapshot_id:newer}).code,'PARTIAL_CONFIRMATION_REQUIRED');
+    assert.equal((await validateAndCreateApproval(repo,repo.getBatch(batch.batch_id)!,'actor',{...decision,snapshot_id:newer})).code,'PARTIAL_CONFIRMATION_REQUIRED');
   }finally{repo.close();}
 });
 
-test('unknown and prefixed write tools are denied before approval', () => {
+test('unknown and prefixed write tools are denied before approval', async () => {
   const { repo, batch } = fixture();
   try {
     for (const tool of ['delete_database', 'mcp__langflow__upsert_shelter', undefined]) {
-      assert.equal(verifyToolExecutionAgainstGate(repo, batch.batch_id, tool as string, {}).allow, false);
+      assert.equal((await verifyToolExecutionAgainstGate(repo, batch.batch_id, tool as string, {})).allow, false);
     }
   } finally { repo.close(); }
 });
-test('approval cannot use a snapshot belonging to a different batch', () => {
+test('approval cannot use a snapshot belonging to a different batch', async () => {
   const { repo, batch, session } = fixture();
   try {
     const other = repo.createBatch({ sessionId: session.session_id, requestId: 'two', contextId: session.context_id, sourceSha256: 'h', sourceLength: 1, filteredText: 'x', piiSummary: {} });
-    assert.equal(validateAndCreateApproval(repo, other, 'actor', decision).valid, false);
+    assert.equal((await validateAndCreateApproval(repo, other, 'actor', decision)).valid, false);
   } finally { repo.close(); }
 });
-test('write digest and choices must exactly match the approved candidate', () => {
+test('write digest and choices must exactly match the approved candidate', async () => {
   const { repo, batch } = fixture();
   try {
-    assert.equal(validateAndCreateApproval(repo, batch, 'actor', decision).valid, true);
-    assert.equal(verifyToolExecutionAgainstGate(repo, batch.batch_id, 'upsert_shelter', { snapshot_id: id, snapshot_sha256: 'b'.repeat(64) }).allow, false);
-    assert.equal(verifyToolExecutionAgainstGate(repo, batch.batch_id, 'upsert_shelter', { snapshot_id: id, snapshot_sha256: sha, confirmed: true, partial_acknowledged: false, clear_decisions: { R01: { disability: 'clear' } } }).allow, false);
+    assert.equal((await validateAndCreateApproval(repo, batch, 'actor', decision)).valid, true);
+    assert.equal((await verifyToolExecutionAgainstGate(repo, batch.batch_id, 'upsert_shelter', { snapshot_id: id, snapshot_sha256: 'b'.repeat(64) })).allow, false);
+    assert.equal((await verifyToolExecutionAgainstGate(repo, batch.batch_id, 'upsert_shelter', { snapshot_id: id, snapshot_sha256: sha, confirmed: true, partial_acknowledged: false, clear_decisions: { R01: { disability: 'clear' } } })).allow, false);
   } finally { repo.close(); }
 });
-test('consuming an already consumed or missing approval returns false', () => {
+test('consuming an already consumed or missing approval returns false', async () => {
   const { repo, batch } = fixture();
   try {
-    const approval = validateAndCreateApproval(repo, batch, 'actor', decision).approval!;
+    const approval = (await validateAndCreateApproval(repo, batch, 'actor', decision)).approval!;
     assert.equal(repo.consumeApproval(approval.approval_id), true);
     assert.equal(repo.consumeApproval(approval.approval_id), false);
     assert.equal(repo.consumeApproval('missing'), false);
   } finally { repo.close(); }
 });
-test('a second approval for the same candidate cannot authorize another write', () => {
+test('a second approval for the same candidate cannot authorize another write', async () => {
   const { repo, batch } = fixture();
   try {
-    assert.equal(validateAndCreateApproval(repo, batch, 'actor', decision).valid, true);
-    assert.equal(validateAndCreateApproval(repo, batch, 'actor', decision).valid, false);
+    assert.equal((await validateAndCreateApproval(repo, batch, 'actor', decision)).valid, true);
+    assert.equal((await validateAndCreateApproval(repo, batch, 'actor', decision)).valid, false);
   } finally { repo.close(); }
 });
-test('expired approval is denied without consuming it', () => {
+test('expired approval is denied without consuming it', async () => {
   const { repo, batch } = fixture();
   try {
-    const approval = validateAndCreateApproval(repo, batch, 'actor', decision).approval!;
-    assert.equal(verifyToolExecutionAgainstGate(repo, batch.batch_id, 'upsert_shelter', buildApprovedWritePayload(approval), -1).allow, false);
+    const approval = (await validateAndCreateApproval(repo, batch, 'actor', decision)).approval!;
+    assert.equal((await verifyToolExecutionAgainstGate(repo, batch.batch_id, 'upsert_shelter', buildApprovedWritePayload(approval), -1)).allow, false);
     assert.equal(repo.getPendingApprovalForSnapshot(batch.batch_id, id)?.approval_id, approval.approval_id);
   } finally { repo.close(); }
 });
-test('write attempts cannot silently change a keep decision into clear', () => {
+test('write attempts cannot silently change a keep decision into clear', async () => {
   const { repo, batch } = fixture();
   try {
     // Persist a real pending clear proposal as a fresh candidate.
     const newer = '2'.repeat(32);
     repo.saveSnapshot({ snapshotId: newer, snapshotSha256: sha, batchId: batch.batch_id, version: 2, qualityStatus: 'PERLU_KLARIFIKASI', payload: { records: [{ report_id: 'R01', pending_clear_fields: ['disability'] }] } });
     repo.supersedePreviousSnapshots(batch.batch_id, newer);
-    const approval = validateAndCreateApproval(repo, batch, 'actor', { ...decision, snapshot_id: newer, partial_acknowledged: true, clear_decisions: { R01: { disability: 'keep' } } }).approval!;
+    const approval = (await validateAndCreateApproval(repo, batch, 'actor', { ...decision, snapshot_id: newer, partial_acknowledged: true, clear_decisions: { R01: { disability: 'keep' } } })).approval!;
     const payload = buildApprovedWritePayload(approval);
-    assert.equal(verifyToolExecutionAgainstGate(repo, batch.batch_id, 'upsert_shelter', { ...payload, clear_decisions: { R01: { disability: 'clear' } } }).allow, false);
-    assert.equal(verifyToolExecutionAgainstGate(repo, batch.batch_id, 'upsert_shelter', { input_value: JSON.stringify(payload) }).allow, true);
+    assert.equal((await verifyToolExecutionAgainstGate(repo, batch.batch_id, 'upsert_shelter', { ...payload, clear_decisions: { R01: { disability: 'clear' } } })).allow, false);
+    assert.equal((await verifyToolExecutionAgainstGate(repo, batch.batch_id, 'upsert_shelter', { input_value: JSON.stringify(payload) })).allow, true);
   } finally { repo.close(); }
 });
-test('draft_bulletin cannot create an external document without a publication approval', () => {
+test('draft_bulletin cannot create an external document without a publication approval', async () => {
   const { repo, batch } = fixture();
   try {
-    assert.equal(verifyToolExecutionAgainstGate(repo, batch.batch_id, 'draft_bulletin', { action: 'create_doc', confirmed_create_doc: true }).allow, false);
-    assert.equal(verifyToolExecutionAgainstGate(repo, batch.batch_id, 'draft_bulletin', { action: 'preview' }).allow, true);
+    assert.equal((await verifyToolExecutionAgainstGate(repo, batch.batch_id, 'draft_bulletin', { action: 'create_doc', confirmed_create_doc: true })).allow, false);
+    assert.equal((await verifyToolExecutionAgainstGate(repo, batch.batch_id, 'draft_bulletin', { action: 'preview' })).allow, true);
   } finally { repo.close(); }
 });
 
@@ -190,16 +190,16 @@ test('reusing a snapshot ID/hash with changed data cannot replace the displayed 
     const batch = repo.getBatch(sent.json().batch_id)!;
     assert.equal(JSON.parse(batch.preview_payload_json!).records[0].total_people, 10);
     assert.equal(batch.status, 'payload_invalid');
-    assert.equal(validateAndCreateApproval(repo, batch, 'actor', decision).valid, false);
+    assert.equal((await validateAndCreateApproval(repo, batch, 'actor', decision)).valid, false);
   } finally { await app.close(); repo.close(); }
 });
 
-test('draft_bulletin denial explains the required format so the model can retry', () => {
+test('draft_bulletin denial explains the required format so the model can retry', async () => {
   const repo = new SigapRepository(':memory:');
   const session = repo.createSession('posko-uji');
   const batch = repo.createBatch({ sessionId: session.session_id, requestId: 'r-reason', contextId: 'posko-uji', sourceSha256: 'a'.repeat(64), sourceLength: 1, filteredText: 'x', piiSummary: { nikCount: 0, phoneCount: 0, emailCount: 0, bankCount: 0, totalRedacted: 0 } });
   for (const args of [{ action: 'create_doc' }, 'buatkan buletin', { input_value: 'bukan json' }, { action: 'preview', confirmed_create_doc: true }]) {
-    const decision = verifyToolExecutionAgainstGate(repo, batch.batch_id, 'draft_bulletin', args);
+    const decision = (await verifyToolExecutionAgainstGate(repo, batch.batch_id, 'draft_bulletin', args));
     assert.equal(decision.allow, false);
     assert.match(decision.reason || '', /"action":"preview"/);
   }

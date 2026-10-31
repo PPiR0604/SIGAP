@@ -2,6 +2,7 @@ const labels: Record<string, string> = {
   fetch_shelters: 'Membaca rekap tersimpan',
   prepare_needs: 'Mengekstrak data dari laporan',
   source_prepared: 'Mengekstrak data dari laporan',
+  extract_report: 'Mengekstrak data dari laporan',
   validate_needs: 'Memeriksa dan memvalidasi data',
   calculate_gap: 'Menghitung kebutuhan posko',
   calculate_gap_all: 'Memeriksa kebutuhan seluruh desa',
@@ -26,7 +27,7 @@ function canonical(stage?: string): string {
 export function stageLabel(stage?: string): string { return labels[canonical(stage)] || ''; }
 /** Tahap yang menandakan alur laporan (bukan sekadar chat atau pembacaan). */
 export function isReportStage(stage?: string): boolean {
-  return ['prepare_needs', 'source_prepared', 'validate_needs', 'upsert_shelter'].includes(canonical(stage));
+  return ['prepare_needs', 'source_prepared', 'extract_report', 'validate_needs', 'upsert_shelter'].includes(canonical(stage));
 }
 export function isReadOnlyStage(stage?:string):boolean{
   return ['fetch_shelters','storage_read','calculate_gap','calculate_gap_all','flag_anomalies','draft_bulletin','calculate_saved'].includes(canonical(stage));

@@ -12,7 +12,7 @@ async function openMarkdown(page: Page) {
     contentType: 'text/event-stream',
     body: `id: 1\nevent: assistant_message\ndata: ${JSON.stringify({ text: 'Pratinjau kandidat saat ini:\n\n' + table })}\n\nid: 2\nevent: bulletin_ready\ndata: ${JSON.stringify({ content: bulletinBody + '\n\n' + footer })}\n\n`,
   }));
-  await page.goto('/');
+  await page.goto('/?view=Laporan');
   await expect(page.getByRole('log')).toContainText('Pratinjau kandidat saat ini:');
 }
 
@@ -33,6 +33,21 @@ test('tabel chat tetap ringkas dan kolom terakhir tersedia pada desktop/mobile',
   expect(last!.x).toBeGreaterThanOrEqual(container!.x - 1);
   expect(last!.x + last!.width).toBeLessThanOrEqual(container!.x + container!.width + 1);
   await page.screenshot({ path: testInfo.outputPath('chat-markdown-table.png'), fullPage: true });
+});
+
+test('pesan user dan Markdown agent memakai ukuran teks ringkas yang sama',async({page})=>{
+  await page.route('**/api/sessions/*/messages',r=>r.fulfill({status:202,json:{batch_id:'font-fixture',status:'processing',filtered_text:'Cek kebutuhan posko.'}}));
+  await openMarkdown(page);
+  await page.getByRole('textbox',{name:'Laporan atau pertanyaan Anda'}).fill('Cek kebutuhan posko.');
+  await page.getByRole('button',{name:'Kirim',exact:true}).click();
+  const user=page.getByRole('log').locator('.chat-message.user p').last();
+  const agent=page.getByRole('log').locator('.chat-message.assistant .chat-markdown p').first();
+  await expect(user).toHaveText('Cek kebutuhan posko.');
+  const sizes=await Promise.all([user,agent].map(el=>el.evaluate(node=>({font:getComputedStyle(node).fontSize,line:getComputedStyle(node).lineHeight}))));
+  expect(sizes[0]).toEqual(sizes[1]);
+  expect(sizes[0].font).toBe('13px');
+  expect(parseFloat(sizes[0].line)).toBeGreaterThanOrEqual(19.5);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
 
 test('buletin menampilkan Markdown, menghapus penutup, dan menyalin draf yang sama', async ({ page, context }, testInfo) => {

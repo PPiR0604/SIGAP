@@ -1,0 +1,7 @@
+PESAN 1 — kirim sendiri, lalu tunggu proses selesai:
+
+Periksa kebutuhan semua desa hanya dari rekap yang sudah tersimpan. Bedakan kebutuhan total, stok, dan kekurangan air; jelaskan data yang masih belum lengkap atau tidak sebanding periodenya. Tampilkan dasar perhitungan dan sumber data. Jangan memakai kandidat yang belum disetujui, jangan simpan perubahan, dan jangan menebak stok yang tidak diketahui.
+
+PESAN 2 — kirim setelah pesan pertama selesai:
+
+Buat draf buletin donatur dalam Markdown hanya dari rekap tersimpan yang sudah disetujui. Sertakan ringkasan posko dan jiwa, kebutuhan mendesak, serta batasan data. Beri label DATA SINTETIS UNTUK UJI. Jangan tampilkan nomor telepon atau identitas pribadi pelapor. Cukup pratinjau agar bisa saya salin lokal; jangan dipublikasikan, dikirim, atau dibuatkan dokumen eksternal.

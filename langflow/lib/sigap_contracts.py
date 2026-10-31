@@ -26,6 +26,19 @@ def save_snapshot(payload):
     return {"snapshot_id": identifier, "snapshot_sha256": digest}
 
 
+def save_candidate_snapshot(payload):
+    """Each shelter gets its own immutable approval reference, using Python's canonical digest."""
+    if len(payload.get('records', [])) > 1:
+        references=[]
+        for record in payload['records']:
+            child=dict(payload,records=[record],report_records=[r for r in payload.get('report_records',[]) if r.get('report_id')==record.get('report_id')],
+                       issues=[i for i in payload.get('issues',[]) if not i.get('report_id') or i.get('report_id')==record.get('report_id')],
+                       snapshot_issues=[i for i in payload.get('snapshot_issues',[]) if not i.get('report_id') or i.get('report_id')==record.get('report_id')])
+            references.append(save_snapshot(child))
+        payload=dict(payload,row_snapshot_refs=references)
+    return save_snapshot(payload)
+
+
 def load_snapshot(request):
     if not isinstance(request, dict) or not re.fullmatch(r"[a-f0-9]{32}", str(request.get("snapshot_id", ""))):
         raise ValueError("Gunakan snapshot_id dari validate_needs; JSON records bebas tidak diterima.")

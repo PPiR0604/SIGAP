@@ -1,12 +1,12 @@
 import type { FastifyPluginAsync } from 'fastify';
-import type { SigapRepository } from '../db/repo.js';
+import type { Repository } from '../db/contract.js';
 
-export function createBatchesRoute(repo: SigapRepository): FastifyPluginAsync {
+export function createBatchesRoute(repo: Repository): FastifyPluginAsync {
   return async (fastify) => {
     fastify.get('/api/batches/:id', async (request, reply) => {
       const { id: batchId } = request.params as { id: string };
 
-      const batch = repo.getBatch(batchId);
+      const batch = (await repo.getBatch(batchId));
       if (!batch) {
         return reply.code(404).send({
           error: {

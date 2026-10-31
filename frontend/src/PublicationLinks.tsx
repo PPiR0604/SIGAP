@@ -1,0 +1,13 @@
+import {useEffect,useState} from 'react';
+import {authenticatedRequest} from './api';
+type Link={share_id:string;batch_id:string;path:string;active:boolean;source_version:string|null;approved_at:string};
+
+export function PublicationLinks({contextId,revision,onChanged}:{contextId:string;revision:number;onChanged:()=>void}){
+ const [links,setLinks]=useState<Link[]>([]),[error,setError]=useState(''),[loading,setLoading]=useState(true),[pending,setPending]=useState<Link|null>(null),[busy,setBusy]=useState(false),[reload,setReload]=useState(0);
+ useEffect(()=>{let active=true;setLoading(true);setError('');authenticatedRequest(`/api/contexts/${contextId}/publication-links`).then(result=>{if(active)setLinks(result);}).catch(()=>{if(active)setError('Daftar tautan belum dapat dimuat.');}).finally(()=>{if(active)setLoading(false);});return()=>{active=false;};},[contextId,revision,reload]);
+ async function revoke(){if(!pending||busy)return;setBusy(true);setError('');try{await authenticatedRequest(`/api/batches/${pending.batch_id}/publication-link/${pending.share_id}`,{method:'DELETE'});setPending(null);onChanged();}catch{setError('Status tautan belum dapat dipastikan. Muat ulang daftar sebelum mencoba lagi.');}finally{setBusy(false);}}
+ return <section className="card publication-history" aria-label="Riwayat tautan publik"><h3>Tautan publikasi</h3><p className="note">Kelola versi yang sudah dibagikan.</p>{loading&&<p role="status">Memuat tautan…</p>}{error&&<div role="alert"><p>{error}</p><button className="button secondary" disabled={busy||loading} onClick={()=>{setPending(null);setReload(n=>n+1);}}>Muat ulang tautan</button></div>}{!loading&&!error&&!links.length&&<p>Belum ada tautan publik.</p>}
+  <ul>{links.map(link=><li key={link.share_id}><div><strong>Versi {link.source_version||'tanpa referensi'}</strong><small>{new Date(link.approved_at).toLocaleString('id-ID')}</small><span className={`badge ${link.active?'success':'neutral'}`}>{link.active?'Aktif':'Dinonaktifkan'}</span></div>{link.active&&<div className="publication-link-actions"><a className="button secondary" href={link.path} target="_blank" rel="noopener noreferrer">Buka publikasi</a><button className="button quiet" disabled={busy} onClick={()=>setPending(link)}>Nonaktifkan</button></div>}</li>)}</ul>
+  {pending&&<div className="publication-revoke-warning"><strong>Nonaktifkan tautan versi {pending.source_version||'ini'}?</strong><p>Pembaca tidak dapat lagi membuka tautan ini.</p><div className="publication-link-actions"><button className="button secondary" disabled={busy} onClick={()=>setPending(null)}>Batal</button><button className="button primary" disabled={busy} onClick={()=>void revoke()}>Ya, nonaktifkan</button></div></div>}
+ </section>;
+}

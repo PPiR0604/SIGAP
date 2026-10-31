@@ -1,14 +1,14 @@
 import type { FastifyPluginAsync } from 'fastify';
-import type { SigapRepository } from '../db/repo.js';
+import type { Repository } from '../db/contract.js';
 import { DecisionRequestBodySchema, validateAndCreateApproval } from '../approvals/gate.js';
 import type { BatchOrchestrator } from '../pipeline/orchestrator.js';
 
-export function createDecisionsRoute(repo: SigapRepository, orchestrator: BatchOrchestrator): FastifyPluginAsync {
+export function createDecisionsRoute(repo: Repository, orchestrator: BatchOrchestrator): FastifyPluginAsync {
   return async (fastify) => {
     fastify.post('/api/batches/:id/decisions', async (request, reply) => {
       const { id: batchId } = request.params as { id: string };
 
-      const batch = repo.getBatch(batchId);
+      const batch = (await repo.getBatch(batchId));
       if (!batch) {
         return reply.code(404).send({
           error: {
@@ -26,15 +26,15 @@ export function createDecisionsRoute(repo: SigapRepository, orchestrator: BatchO
         return reply.code(422).send({
           error: {
             code: 'INVALID_DECISION_BODY',
-            message: parseResult.error.errors[0]?.message || 'Format keputusan tidak valid.'
+            message: parseResult.error.issues[0]?.message || 'Format keputusan tidak valid.'
           }
         });
       }
 
       // Actor is derived from session (browser does not supply arbitrary actor)
-      const actorId = `operator-session-${batch.session_id.slice(0, 8)}`;
+      const actorId = request.principal?.userId ?? `operator-session-${batch.session_id.slice(0, 8)}`;
 
-      const validation = validateAndCreateApproval(repo, batch, actorId, parseResult.data);
+      const validation = (await validateAndCreateApproval(repo, batch, actorId, parseResult.data));
       if (!validation.valid) {
         const statusCode = ['SNAPSHOT_SUPERSEDED', 'SNAPSHOT_EXPIRED', 'ALREADY_APPROVED', 'WRITE_IN_PROGRESS'].includes(validation.code || '') ? 409 : 422;
         return reply.code(statusCode).send({
@@ -46,8 +46,9 @@ export function createDecisionsRoute(repo: SigapRepository, orchestrator: BatchO
       }
 
       if (validation.approval) {
-        repo.updateBatchStatus(batchId, 'saving');
-        setImmediate(() => { void orchestrator.continueApprovedWrite(batch, validation.approval!); });
+        (await repo.updateBatchStatus(batchId, 'saving'));
+        if(request.principal)orchestrator.setPrincipal(batch.session_id,request.principal);
+        orchestrator.schedule(() => orchestrator.continueApprovedWrite(batch, validation.approval!));
       }
       return reply.code(validation.approval ? 202 : 200).send({
         success: true,

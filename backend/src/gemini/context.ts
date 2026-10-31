@@ -1,6 +1,7 @@
 import {canonicalToolName} from '../acp/toolNames.js';
 import type {McpToolResult} from '../mcp/httpClient.js';
 import type {GeminiTurn} from './client.js';
+import {parsePrepareNeedsOutput,parseSigapReadResult} from '../pipeline/toolResults.js';
 
 type Part=Record<string,unknown>;
 
@@ -52,7 +53,17 @@ function dedupeText(text:string,seen:Set<string>):string{
  * untuk model yang dipadatkan: bagian teks identik digabung, blok duplikat dibuang, dan
  * structuredContent dibuang bila teks sudah memuat isi yang sama.
  */
-export function compactToolResult(result:McpToolResult):{content:Array<{type:string;text?:string}>;isError?:boolean;structuredContent?:unknown}{
+export function compactToolResult(result:McpToolResult,toolName?:string):{content:Array<{type:string;text?:string}>;isError?:boolean;structuredContent?:unknown}{
+  if(!result.isError&&['validate_needs','fetch_shelters'].includes(toolName||'')){
+    try{
+      const text=result.content.filter(p=>p.type==='text').map(p=>p.text||'').join('\n');
+      const data:any=toolName==='validate_needs'?parsePrepareNeedsOutput(text):parseSigapReadResult(text);
+      const records:any[]=Array.isArray(data.snapshot_records)&&data.snapshot_records.length?data.snapshot_records:data.records||[];
+      const fields=['report_id','shelter_id','shelter_name','village','total_people','total_families','male','female','infants_toddlers','children','elderly','pregnant','breastfeeding','disability','urgent_needs','surplus_do_not_send','stock','stock_context','is_estimate','reported_at','missing_fields','validation_issues','stock_issues'];
+      const summary={snapshot_id:data.snapshot_id,snapshot_sha256:data.snapshot_sha256,total_shelters:records.length,records:records.map((r:any)=>Object.fromEntries(fields.filter(k=>r[k]!==undefined).map(k=>[k,r[k]]))),...('verification' in data?{verification:data.verification}:{}),...('issues' in data?{issues:data.issues}:{}),instruction:'Kandidat lengkap dan provenance disimpan server. Gunakan referensi snapshot untuk tool berikutnya; jangan merekonstruksi seluruh record.'};
+      return {content:[{type:'text',text:JSON.stringify(summary)}]};
+    }catch{/* Preserve unknown protocols and validation errors unchanged. */}
+  }
   const seen=new Set<string>();
   const content:Array<{type:string;text?:string}>=[];
   for(const part of result.content){

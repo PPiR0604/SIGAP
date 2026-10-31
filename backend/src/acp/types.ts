@@ -3,6 +3,7 @@ export interface AgentSessionConfig {
   contextId: string;
   systemPrompt?: string;
   mcpServerConfig?: any;
+  secureToolInput?:(name:string,args:any)=>Promise<any>;
 }
 
 export interface AgentPromptOptions {
@@ -17,6 +18,11 @@ export interface AgentPromptOptions {
   sourceFormat?: 'csv';
   expectedReportCount?: number;
   writePayload?: Record<string, any>;
+  /** Trusted field extraction built from a validated form; source is still checked in Langflow. */
+  structuredRecord?: Record<string,unknown>;
+  /** Unambiguous report input: source preparation and validation are driven by the server. */
+  fastExtraction?: boolean;
+  correctionBaseKey?:string;
 }
 
 export type ApplicationEventType =
@@ -74,6 +80,6 @@ export interface AgentRuntime {
   closeSession(sessionId: string): Promise<void>;
   /** Opsional: baca rekap tersimpan langsung lewat tool baca (tanpa model). */
   readStoredRekap?(sessionId: string, signal?: AbortSignal): Promise<{ content: Array<{ type: string; text?: string }>; isError?: boolean } | null>;
-  calculateNeedsForSnapshot?(sessionId:string, reference:{snapshot_id:string;snapshot_sha256:string}):Promise<{content:Array<{type:string;text?:string}>;isError?:boolean}>;
+  calculateNeedsForSnapshot?(sessionId:string, reference:{snapshot_id:string;snapshot_sha256:string},signal?:AbortSignal):Promise<{content:Array<{type:string;text?:string}>;isError?:boolean}>;
   shutdown?(): Promise<void>;
 }

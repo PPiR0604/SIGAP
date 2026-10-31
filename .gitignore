@@ -37,7 +37,8 @@ backend/output/*
 backend/data/*
 !backend/data/.gitkeep
 AGENTS.md
-docs/
+docs/*
+!docs/UX_REDESIGN.md
 
 # OS files
 Thumbs.db

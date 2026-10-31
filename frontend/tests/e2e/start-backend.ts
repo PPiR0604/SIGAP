@@ -1,8 +1,10 @@
 import { buildServer } from '../../../backend/src/server.js';
 import { FakeAgentRuntime } from '../../../backend/src/acp/fakeRuntime.js';
+import { SigapRepository } from '../../../backend/src/db/repo.js';
 
 // Explicit configuration avoids live providers, credentials, and persistent databases.
 const { app } = await buildServer({
+  repo: new SigapRepository(':memory:'),
   runtime: new FakeAgentRuntime(),
   sessionConfig: {},
   config: {

@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { findExecutable } from './process.js';
 import type { AgentSessionConfig } from './types.js';
+import {validateMcpUrl} from '../mcp/urlPolicy.js';
 
 function loadSystemPrompt(provider: 'bob' | 'gemini' | 'openai'): string {
   const candidates = [
@@ -59,9 +60,7 @@ export function loadAgentSessionConfig(provider: 'bob' | 'gemini' | 'openai' = '
           serverUrl = parsed.toString();
         }
       } catch {}
-      const url = new URL(serverUrl);
-      if(!['http:', 'https:'].includes(url.protocol))throw new Error('URL MCP HTTP tidak valid.');
-      if(provider !== 'bob' && !['localhost','127.0.0.1','[::1]','host.docker.internal'].includes(url.hostname))throw new Error('MCP LLM saat ini hanya mendukung loopback.');
+      validateMcpUrl(serverUrl);
       if(Object.values(value.headers || {}).some(header=>typeof header!=='string'))throw new Error('Header MCP harus string.');
       return { type: value.type === 'sse' ? 'sse' : 'http', name, url: serverUrl, headers: Object.entries(value.headers || {}).map(([name, value]) => ({ name, value })) };
     }

@@ -4,6 +4,13 @@ export function isCorrectionRequest(text:string):boolean {
   return /^(?:(?:mohon|tolong)\s+)?(?:klarifikasi|koreksi|ralat|perbaiki|ubah|update|pembaruan)\b/i.test(text.trim()) && /\d/.test(text);
 }
 
+/** Route only clear reports; ordinary questions and ambiguous requests stay conversational. */
+export function isClearlyReport(text:string):boolean {
+  const trimmed=text.trim();
+  if (trimmed.includes('?')||/^(?:(?:mohon|tolong|bisa|boleh|coba|silakan)\s+)*(?:apakah|apa|siapa|berapa|bagaimana|mana|cek|baca|lihat|periksa|ringkas|tampilkan|cari|hitung|bandingkan|buat|susun)\b/i.test(trimmed)) return false;
+  return /\bposko\b/i.test(trimmed) && /\b(?:lapor(?:an)?|pengungsi|jiwa|jumlah|butuh|kebutuhan|stok|laki[ -]?laki|perempuan|lansia|balita)\b/i.test(trimmed) && (/\d/.test(trimmed)||/\b(?:butuh|kebutuhan)\b/i.test(trimmed));
+}
+
 export class CorrectionTargetError extends Error {
   constructor(public kind:'missing'|'ambiguous',message:string){super(message);}
 }

@@ -77,7 +77,7 @@ describe('PRD Section 16 & Regression Scenarios', () => {
     assert.notEqual(parsed.verification?.status, 'verified');
   });
 
-  test('Skenario Keputusan Clear/Keep/Defer: keep dan defer diterima jika dideklarasikan eksplisit', () => {
+  test('Skenario Keputusan Clear/Keep/Defer: keep dan defer diterima jika dideklarasikan eksplisit', async () => {
     const repo = new SigapRepository(':memory:');
     const session = repo.createSession();
     const batch = repo.createBatch({
@@ -104,7 +104,7 @@ describe('PRD Section 16 & Regression Scenarios', () => {
     });
 
     // Valid: each pending field has clear/keep/defer
-    const approval = validateAndCreateApproval(repo, batch, 'actor-1', {
+    const approval = (await validateAndCreateApproval(repo, batch, 'actor-1', {
       action: 'approve_save',
       snapshot_id: snapshotId,
       partial_acknowledged: true,
@@ -114,7 +114,7 @@ describe('PRD Section 16 & Regression Scenarios', () => {
           notes: 'defer'
         }
       }
-    });
+    }));
 
     assert.equal(approval.valid, true);
     assert.equal(approval.approval?.status, 'pending');

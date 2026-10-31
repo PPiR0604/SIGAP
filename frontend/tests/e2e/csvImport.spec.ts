@@ -18,7 +18,7 @@ test('every stored-data conflict must be explicitly selected before saving',asyn
   await page.route('**/api/sessions/*/events',r=>r.fulfill({contentType:'text/event-stream',body:frame(1,'preview_ready',{batch_id:batch,snapshot_id:snapshot,records:[{report_id:'R001',shelter_name:'Posko A',village:'Desa A',total_people:12,storage_conflicts:[{field:'total_people',previous_value:10,incoming_value:12,previous_reported_at:'2026-10-22 10:00',incoming_reported_at:'2026-10-22 11:00'}]}]})+frame(2,'approval_required',{batch_id:batch})+frame(3,'processing_completed',{batch_id:batch})}));
   let saved:any;await page.route('**/api/batches/*/decisions',async r=>{saved=r.request().postDataJSON();await r.fulfill({status:202,json:{success:true,status:'saving'}});});
   await page.goto('/');await page.getByRole('button',{name:'Rekap',exact:true}).click();
-  await expect(page.locator('tbody tr')).toHaveCount(1);await page.getByRole('button',{name:'Tinjau & setujui'}).click();
+  await expect(page.getByRole('region',{name:'Tabel rekap posko',exact:true}).locator('tbody tr')).toHaveCount(1);await page.getByRole('button',{name:'Tinjau & setujui'}).click();
   const dialog=page.getByRole('dialog',{name:'Tinjau persetujuan'});
   await dialog.getByLabel(/Saya menyetujui keputusan penyimpanan/).check();
   await dialog.getByLabel('Saya memahami rekap masih parsial dan konflik belum selesai.').check();
@@ -39,14 +39,15 @@ test('corrected demographic counts show pending approval and open the save revie
   await page.route('**/api/sessions/*/events',r=>r.fulfill({contentType:'text/event-stream',body:frame(1,'stored_rekap_ready',{records:[source]})+frame(2,'preview_ready',{batch_id:batch,snapshot_id:snapshot,records:[corrected]})+frame(3,'approval_required',{batch_id:batch})+frame(4,'processing_completed',{batch_id:batch})}));
   let decisions=0;page.on('request',r=>{if(/\/decisions$/.test(r.url()))decisions++;});
   await page.goto('/');await page.getByRole('button',{name:'Rekap',exact:true}).click();
-  await expect(page.locator('tbody tr')).toContainText('belum disimpan');
-  await expect(page.locator('tbody tr')).toContainText('Menunggu persetujuan');
+  await expect(page.getByRole('region',{name:'Tabel rekap posko',exact:true}).locator('tbody tr')).toContainText('belum disimpan');
+  await expect(page.getByRole('region',{name:'Tabel rekap posko',exact:true}).locator('tbody tr')).toContainText('Menunggu persetujuan');
   await page.getByRole('button',{name:'Posko Harapan',exact:true}).click();
-  const detail=page.getByRole('dialog',{name:'Detail laporan'});
+  const detail=page.getByRole('region',{name:'Halaman klarifikasi posko',exact:true});
   await expect(detail.locator('.detail-grid').first()).toContainText('43');
   await expect(detail).not.toContainText('Dibaca dari rekap yang sudah tersimpan.');
+  await detail.getByRole('group',{name:'Bagian data pembanding'}).getByRole('button',{name:'Data posko',exact:true}).click();
   await expect(detail.getByText('Belum dilaporkan',{exact:true})).toBeVisible();
-  await detail.getByRole('button',{name:'Tinjau & simpan perubahan'}).click();
+  await detail.getByRole('group',{name:'Bagian data pembanding'}).getByRole('button',{name:'Pemeriksaan',exact:true}).click();await detail.getByRole('button',{name:'Tinjau & simpan perubahan'}).click();
   const review=page.getByRole('dialog',{name:'Tinjau persetujuan'});
   await expect(review.getByRole('combobox',{name:'Konflik R001 male'})).toBeVisible();
   await expect(review).toContainText('Tersimpan: 45');

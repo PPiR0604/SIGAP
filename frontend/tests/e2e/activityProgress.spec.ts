@@ -8,11 +8,13 @@ test('progres perubahan hanya tampil untuk laporan; cek, hitung, dan verifikasi 
   await page.route(/^https:\/\/fonts\.(googleapis|gstatic)\.com\//,r=>r.abort());
   await page.route('**/api/sessions/*/events',r=>r.fulfill({contentType:'text/event-stream',body:events.filter(e=>e.id>Number(r.request().headers()['last-event-id']||0)).map(e=>e.body).join('')||': keepalive\n\n'}));
   await page.route('**/api/sessions/*/messages',r=>r.fulfill({status:202,json:{batch_id:String(++batchNumber).padStart(32,'0'),status:'processing',pii_summary:{totalRedacted:0}}}));
-  await page.goto('/');
+  await page.goto('/?view=Laporan');
   const steps=page.getByRole('list',{name:/Progres batch/});
   await expect(steps).toHaveCount(0);
   emit('stored_rekap_ready',{records:[record]});
-  await expect(page.getByText('1 posko · rekap tersimpan',{exact:true})).toBeVisible();
+  const preview=page.getByRole('region',{name:'Pratinjau rekap'});
+  await expect(preview.getByText('1 posko',{exact:true})).toBeVisible();
+  await expect(preview.locator('.preview-overview-meta .badge')).toHaveText('Rekap tersimpan');
   await expect(steps).toHaveCount(0);
   await expect(page.getByText('Kirim laporan baru untuk memulai alur pemeriksaan.',{exact:false})).toHaveCount(0);
 
@@ -34,11 +36,12 @@ test('progres perubahan hanya tampil untuk laporan; cek, hitung, dan verifikasi 
     await expect(composer(page)).toHaveValue('');
     const batch=String(batchNumber).padStart(32,'0');
     emit('stage_changed',{batch_id:batch,stage});
-    await expect(page.locator('.chat-dock-heading [role=status]')).toHaveText(label);
+    await expect(page.locator('.chat-response-status[role=status]')).toContainText(label);
+    await expect(page.locator('.ai-activity-dot').first()).toHaveCSS('animation-name','ai-pulse');
     await expect(steps).toHaveCount(0);
     await expect(page.locator('[aria-labelledby=preview-title] .badge').first()).not.toHaveText('Memperbarui…');
     emit('processing_completed',{batch_id:batch});
-    await expect(page.locator('.chat-dock-heading [role=status]')).toHaveText('Asisten laporan lapangan');
+    await expect(page.locator('.chat-dock-heading [role=status]')).toHaveCount(0);
     expect(await page.locator('[aria-labelledby=preview-title] .muted').textContent()).toBe(version);
     await expect(steps).toHaveCount(0);
   }
@@ -53,7 +56,7 @@ test('progres perubahan hanya tampil untuk laporan; cek, hitung, dan verifikasi 
   await page.getByRole('button',{name:'Laporan',exact:true}).click();
   emit('readback_result',{batch_id:candidateBatch,verification_status:'verified',records:[record]});
   emit('processing_completed',{batch_id:candidateBatch});
-  await expect(page.locator('[aria-labelledby=preview-title] .badge').first()).toHaveText('Tersimpan & terverifikasi');
+  await expect(page.locator('[aria-labelledby=preview-title] .badge').first()).toHaveText('Rekap tersimpan');
   await expect(steps).toHaveCount(0);
   await composer(page).fill('Laporan baru setelah penyimpanan selesai.');await sendButton(page).click();
   await expect(composer(page)).toHaveValue('');

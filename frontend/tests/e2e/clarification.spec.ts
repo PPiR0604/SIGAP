@@ -1,9 +1,9 @@
-import { test, expect, createPreview, composer } from './fixtures';
+import { test, expect, createPreview, composer, recapRows } from './fixtures';
 
 async function openForm(page: import('@playwright/test').Page) {
   await page.getByRole('button', { name: 'Posko Harapan', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'Detail laporan' });
-  await dialog.getByRole('button', { name: 'Tulis klarifikasi' }).click();
+  const dialog = page.getByRole('region',{name:'Halaman klarifikasi posko',exact:true});
+  if(await dialog.getByRole('button', { name: 'Tulis klarifikasi' }).count())await dialog.getByRole('button', { name: 'Tulis klarifikasi' }).click();
   return dialog;
 }
 
@@ -13,6 +13,7 @@ test('klarifikasi dikirim dari detail, menampilkan hasil server, dan mempertahan
   await composer(app).fill('Draf chat yang belum dikirim');
   await app.getByRole('button', { name: 'Rekap', exact: true }).click();
   const dialog = await openForm(app);
+  await dialog.getByRole('group',{name:'Bagian formulir klarifikasi'}).getByRole('button',{name:'Catatan',exact:true}).click();
   await dialog.getByRole('textbox', { name: 'Catatan klarifikasi (opsional)' }).fill('Sudah diperiksa ulang oleh petugas.');
   const request = app.waitForRequest('**/api/sessions/*/messages');
   await dialog.getByRole('button', { name: 'Validasi perubahan' }).click();
@@ -24,9 +25,9 @@ test('klarifikasi dikirim dari detail, menampilkan hasil server, dan mempertahan
   // The canonical result still displays the backend's 45.
   await expect(dialog.locator('.detail-grid').filter({ hasText: 'Laki-laki' })).toContainText('45');
   await expect(dialog).toBeVisible();
-  await expect(app.getByRole('navigation').getByRole('button', { name: 'Rekap', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(app).toHaveURL(/view=Klarifikasi/);
   await app.screenshot({ path: test.info().outputPath('klarifikasi-hasil.png'), fullPage: true });
-  await dialog.getByRole('button', { name: 'Tutup dialog' }).click();
+  await dialog.getByRole('button', { name:'Kembali',exact:true }).click();
   await app.getByRole('button', { name: 'Laporan', exact: true }).click();
   await expect(composer(app)).toHaveValue('Draf chat yang belum dikirim');
 });
@@ -40,11 +41,11 @@ test('validasi form menolak angka negatif, pecahan, dan perubahan kosong sebelum
   for (const invalid of ['-1', '3.5']) {
     await male.fill(invalid);
     await dialog.getByRole('button', { name: 'Validasi perubahan' }).click();
-    await expect(dialog.getByRole('alert')).toHaveText('Laki-laki harus berupa bilangan bulat nol atau lebih.');
+    await expect(dialog.getByRole('alert')).toContainText('Laki-laki harus berupa bilangan bulat nol atau lebih.');
   }
   await male.fill('');
   await dialog.getByRole('button', { name: 'Validasi perubahan' }).click();
-  await expect(dialog.getByRole('alert')).toHaveText('Ubah setidaknya satu angka atau tulis catatan klarifikasi.');
+  await expect(dialog.getByRole('alert')).toHaveText('Ubah setidaknya satu data atau tulis catatan klarifikasi.');
   expect(requests).toBe(0);
   await male.fill('0');
   await app.screenshot({ path: test.info().outputPath('klarifikasi-form.png'), fullPage: true });
@@ -81,7 +82,8 @@ test('SSE klarifikasi sebelum HTTP tetap tampil di detail dan pengiriman ganda t
   });
   try {
     const dialog = await openForm(app);
-    await dialog.getByRole('textbox', { name: 'Catatan klarifikasi (opsional)' }).fill('Periksa kembali sumber laporan ini.');
+    await dialog.getByRole('group',{name:'Bagian formulir klarifikasi'}).getByRole('button',{name:'Catatan',exact:true}).click();
+  await dialog.getByRole('textbox', { name: 'Catatan klarifikasi (opsional)' }).fill('Periksa kembali sumber laporan ini.');
     await dialog.getByRole('button', { name: 'Validasi perubahan' }).click();
     await expect(dialog.getByRole('status')).toContainText('Pratinjau sintetis diterima');
     await expect(dialog.getByRole('button', { name: 'Memvalidasi…' })).toBeDisabled();
@@ -100,9 +102,9 @@ test('angka yang diabaikan validator tidak diklaim berhasil dan draf koreksi dip
   await dialog.getByRole('button', { name: 'Validasi perubahan' }).click();
   expect((await request).postDataJSON().text).toContain('laki-laki: 43');
   // The mock deliberately keeps the old value instead of applying this correction.
-  await expect(dialog.getByRole('alert')).toContainText('belum menerapkan seluruh angka');
+  await expect(dialog.getByRole('alert')).toContainText('belum menerapkan seluruh data');
   await expect(dialog.getByRole('spinbutton', { name: 'Laki-laki', exact: true })).toHaveValue('43');
-  await expect(dialog.locator('.detail-grid')).toContainText('45');
+  await expect(dialog.getByLabel('Rincian jiwa',{exact:true})).toContainText('45');
   await expect(dialog.getByRole('button', { name: 'Validasi perubahan' })).toBeEnabled();
 });
 
@@ -126,9 +128,9 @@ for(const automatic of [false,true])test(`klarifikasi satu desa mempertahankan k
   await page.route('**/api/sessions/*/messages',async route=>{correctionSent=true;await route.fulfill({status:202,json:{batch_id:'b'.repeat(32),status:'accepted',pii_summary:{totalRedacted:0}}});ready();});
   try{
     await page.goto('/');await page.getByRole('button',{name:'Rekap',exact:true}).click();
-    await expect(page.locator('tbody tr')).toHaveCount(2);
+    await expect(recapRows(page)).toHaveCount(2);
     await page.getByRole('button',{name:'Kebutuhan',exact:true}).click();
-    const other=page.getByRole('row').filter({has:page.getByRole('button',{name:'Posko Lain',exact:true})});
+    const other=recapRows(page).filter({has:page.getByRole('button',{name:'Posko Lain',exact:true})});
     await expect(other).toContainText('300 L/hari');
     await page.getByRole('button',{name:'Posko',exact:true}).click();
     const dialog=await openForm(page);
@@ -139,14 +141,15 @@ for(const automatic of [false,true])test(`klarifikasi satu desa mempertahankan k
     await expect(dialog.getByRole('status')).toContainText('Kandidat baru diterima');
     await expect(dialog.getByRole('button',{name:'Tulis klarifikasi'})).toBeEnabled();
     if(automatic){
+      await dialog.getByRole('group',{name:'Bagian data pembanding'}).getByRole('button',{name:'Perhitungan',exact:true}).click();
       await expect(dialog.getByRole('status')).toContainText('Kebutuhan sudah dihitung ulang');
       await expect(dialog.getByRole('region',{name:'Hasil perhitungan kebutuhan'})).toContainText('180 L/hari');
     }
-    await dialog.getByRole('button',{name:'Tutup dialog'}).click();
-    await expect(page.locator('tbody tr')).toHaveCount(2);await expect(other).toContainText('beras');
+    await dialog.getByRole('button',{name:'Kembali',exact:true}).click();
+    await expect(recapRows(page)).toHaveCount(2);await expect(other).toContainText('beras');
     await page.getByRole('button',{name:'Kebutuhan',exact:true}).click();
     await expect(other).toContainText('300 L/hari');
-    const changed=page.getByRole('row').filter({has:page.getByRole('button',{name:'Posko Harapan',exact:true})});
+    const changed=recapRows(page).filter({has:page.getByRole('button',{name:'Posko Harapan',exact:true})});
     await expect(changed).toContainText(automatic?'180 L/hari':'Belum diketahui');
     await page.screenshot({path:testInfo.outputPath('kebutuhan-desa-lain.png'),fullPage:true});
   }finally{ready();}

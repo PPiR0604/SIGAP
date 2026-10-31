@@ -1,0 +1,93 @@
+{
+  "record": {
+    "batch_id": "sphere-a",
+    "report_id": "R001",
+    "shelter_name": "Posko Anggrek",
+    "village": "Sukajaya",
+    "total_people": 100,
+    "male": 45,
+    "female": 55,
+    "infants_toddlers": 10,
+    "children": 20,
+    "elderly": 5,
+    "pregnant": 3,
+    "breastfeeding": 4,
+    "disability": 0,
+    "total_families": 20,
+    "urgent_needs": [
+      "air bersih",
+      "beras"
+    ]
+  },
+  "calculation": {
+    "report_id": "R001",
+    "shelter_name": "Posko Anggrek",
+    "village": "Sukajaya",
+    "total_people": 100,
+    "is_estimate": false,
+    "needs": {
+      "air_liter_per_hari": {
+        "value": 1500,
+        "formula": "100 jiwa × 15 L"
+      },
+      "kkal_per_hari": {
+        "value": 210000,
+        "formula": "100 jiwa × 2.100 kkal"
+      },
+      "jamban_unit": {
+        "value": 5,
+        "formula": "100 jiwa ÷ 20, dibulatkan ke atas"
+      },
+      "ruang_hunian_m2": {
+        "value": 350.0,
+        "formula": "100 jiwa × 3,5 m²"
+      }
+    },
+    "planning": {
+      "schema_version": "sphere2018-population-v1",
+      "age_groups": [
+        {
+          "key": "under5",
+          "people": 10,
+          "water_l": 150,
+          "energy_kcal": 21000
+        },
+        {
+          "key": "children",
+          "people": 20,
+          "water_l": 300,
+          "energy_kcal": 42000
+        },
+        {
+          "key": "adults",
+          "people": 65,
+          "water_l": 975,
+          "energy_kcal": 136500
+        },
+        {
+          "key": "elderly",
+          "people": 5,
+          "water_l": 75,
+          "energy_kcal": 10500
+        }
+      ],
+      "complete_age_counts": true,
+      "nutrition": {
+        "energy_kcal": 210000,
+        "protein_g": 5300,
+        "fat_g": 4000,
+        "carbohydrate_equivalent_g": 38200.0
+      },
+      "issues": []
+    },
+    "gaps": {},
+    "priority": "TINGGI",
+    "score": 9,
+    "reasons": [
+      "+3 kebutuhan mendesak kategori 'air'",
+      "+3 kebutuhan mendesak kategori 'pangan'",
+      "+3 keberadaan 4 kategori rentan; bukan jumlah individu unik"
+    ],
+    "issues": []
+  }
+}

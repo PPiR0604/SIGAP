@@ -1,5 +1,21 @@
 import { test, expect, createPreview, recapRows, composer, sendButton, report } from './fixtures';
 
+test('lost approval response preserves the candidate and requires checking storage before retry',async({app})=>{
+  await createPreview(app);
+  let decisions=0;
+  await app.route('**/api/batches/*/decisions',route=>{decisions++;return route.abort('connectionfailed');});
+  await app.getByRole('button',{name:'Tinjau & setujui'}).click();
+  const dialog=app.getByRole('dialog');
+  await dialog.getByLabel('Keputusan R001 disability').selectOption('keep');
+  await dialog.getByLabel('Saya memahami rekap masih parsial dan konflik belum selesai.').check();
+  await dialog.getByLabel(/Saya menyetujui keputusan penyimpanan/).check();
+  await dialog.getByRole('button',{name:'Konfirmasi persetujuan'}).click();
+  await expect(dialog.getByRole('alert')).toContainText('Hasil simpan belum diketahui');
+  await expect(dialog.getByRole('button',{name:'Konfirmasi persetujuan'})).toBeDisabled();
+  await expect(dialog.getByRole('button',{name:'Periksa rekap tersimpan'})).toBeVisible();
+  expect(decisions).toBe(1);
+});
+
 test('HITL memblokir penyimpanan sampai semua persetujuan dan keputusan field lengkap', async ({ app }) => {
   const decisions: unknown[] = [];
   app.on('request', request => {
@@ -84,6 +100,9 @@ test('persetujuan yang masih berjalan mengunci pengiriman laporan berikutnya', a
     const requested = app.waitForRequest('**/api/batches/*/decisions');
     await dialog.getByRole('button', { name: 'Konfirmasi persetujuan' }).click();
     await requested;
+    await expect(dialog.getByRole('button',{name:'Mengirim persetujuan…',exact:true})).toBeDisabled();
+    await expect(dialog.getByLabel(/Saya menyetujui keputusan penyimpanan/)).toBeDisabled();
+    await expect(dialog.getByRole('status')).toContainText('Menutup panel tidak membatalkan proses');
     await dialog.getByRole('button', { name: 'Tutup dialog' }).click();
     await app.getByRole('button', { name: 'Laporan', exact: true }).click();
     await composer(app).fill('Laporan berikutnya harus menunggu commit.');

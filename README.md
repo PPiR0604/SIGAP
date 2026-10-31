@@ -1,269 +1,59 @@
-﻿# SIGAP (Sistem Informasi dan Manajemen Logistik Tanggap Bencana)
+# SIGAP — Sistem Intelijen Logistik dan Asisten Posko
 
-Paket untuk uji pengguna: [panduan peserta](data/synthetic/user-validation/PANDUAN-PESERTA.md), [data sintetis, hasil pembanding, template feedback dan reset database uji](data/synthetic/user-validation/README.md). Database uji baru dipisahkan dari rekap sebelumnya dan diaktifkan melalui flow Langflow; tidak ada penghapusan database lama.
+SIGAP membantu petugas membaca laporan posko, memeriksa ketidaksesuaian, menghitung acuan kebutuhan dasar dan menyusun buletin. Hasil OCR dan ekstraksi AI harus diperiksa; perubahan tersimpan setelah persetujuan petugas dan verifikasi baca ulang.
 
-Sistem Intelijen Logistik dan Asisten Posko yang mengintegrasikan antarmuka percakapan **IBM Bob** dan **Web Workspace** dengan **Langflow** (sebagai *Execution Engine*) melalui **Model Context Protocol (MCP)**. SIGAP membantu petugas Pos Komando mengubah teks laporan WhatsApp bencana menjadi rekap pengungsi terpilah, memeriksa anomali data, menghitung kalkulasi kebutuhan dasar standar Sphere, serta menyusun draf buletin logistik untuk donatur dengan prinsip **Human-in-the-Loop (HITL)**.
+## Arsitektur saat ini
 
 ```text
-[Petugas Posko] ↔ [Web Workspace / Bob] ↔ [Backend SIGAP / MCP] ↔ [Langflow] ↔ [SQLite Rekap]
+Petugas → Web React → Backend Fastify → model percakapan/ekstraksi
+                          │
+                          ├─ MCP → Langflow: validasi, perhitungan, rekap dan buletin
+                          └─ Supabase Auth + gateway → database Supabase
 ```
 
----
+Model tidak mendapat izin menyimpan secara mandiri. Backend membatasi akses, mengikat persetujuan ke kandidat dan memeriksa hasil penyimpanan. Flow Supabase menggunakan capability terbatas dari backend; kredensial tidak dikirim ke model. Provider OpenAI-compatible dan Gemini didukung. Adapter Bob tersedia, tetapi jalur Bob dengan autentikasi Supabase masih fail-closed; jangan mengklaim integrasi Bob end-to-end tanpa pengujian terpisah.
 
-**Pembaruan Penyimpanan SQLite:** Rekap utama posko menggunakan database SQLite (`rekap_posko.sqlite3`) yang dikelola langsung oleh Langflow. Unggahan `.csv` dan laporan percakapan WhatsApp masuk ke alur validasi yang sama; perbedaan dengan data tersimpan memerlukan konfirmasi petugas sebelum penulisan. Ekspor CSV tetap tersedia. Lihat [panduan migrasi SQLite](langflow/SQLITE_MIGRATION.md).
+## Fitur
 
----
+- **Tugas:** pekerjaan pemeriksaan dan klarifikasi posko.
+- **Laporan:** chat, unggahan TXT/CSV, OCR dokumen PDF/JPG/PNG dan tempel gambar di kotak chat. Hasil OCR harus ditinjau sebelum dikirim. TXT/CSV maksimal 200 KiB; PDF/gambar maksimal 5 MiB dan PDF maksimal 5 halaman.
+- **Rekap:** daftar, pencarian, filter, detail per posko, konflik, koreksi, keputusan persetujuan dan ekspor CSV. Kosong berarti belum diketahui; nol adalah nilai yang dilaporkan.
+- **Kebutuhan:** acuan air, energi pangan, jamban dan ruang hunian dihitung di Langflow. Kekurangan hanya tersedia bila stok dan metadata memenuhi syarat. Alokasi kelompok usia merupakan acuan populasi, bukan kebutuhan gizi spesifik individu; lihat [batas perhitungan](langflow/SPHERE_PLANNING.md).
+- **Buletin:** draf berbasis sumber yang ditinjau; admin dapat menyetujui dan membagikan tautan publik. Pembaca tautan publik tidak memerlukan akun.
 
-## 1. Fitur Utama & Keunggulan
+## Menjalankan proyek
 
-- **Input Fleksibel Lapangan**: Menerima teks laporan WhatsApp, unggahan berkas `.txt` percakapan, serta impor tabel `.csv` data posko.
-- **Penyaringan Data Pribadi Otomatis (PII Redaction)**: NIK (16 digit), nomor telepon, nomor rekening, dan email disamarkan secara otomatis sebelum teks dikirim ke model AI.
-- **Validasi Data & Deteksi Anomali**: Mendeteksi ketidakkonsistenan angka pengungsi, kelompok rentan (balita, lansia, bumil), laporan duplikat, dan posko yang belum memperbarui data (>24 jam).
-- **Kalkulasi Standar Kemanusiaan (Sphere Project)**: Menghitung estimasi kebutuhan dasar darurat (air 15 L/orang/hari, pangan 2.100 kkal, perlengkapan bayi, sanitasi) secara deterministik menggunakan rumus tetap.
-- **Persetujuan Manusia Interaktif (Human-in-the-Loop / HITL)**: Penulisan data ke penyimpanan hanya dapat dieksekusi setelah mendapatkan persetujuan eksplisit dari petugas melalui modal persetujuan Web Workspace atau instruksi Bob.
-- **Verifikasi Dua Arah (*Read-Back Verification*)**: Setelah data disimpan, sistem membaca kembali (*read-back*) data tersimpan untuk mencocokkan checksum/hash guna menjamin keaslian data.
-- **Draf Buletin Donatur**: Menyusun ringkasan publikasi donatur secara otomatis untuk memudahkan koordinasi bantuan relawan dan pihak berwenang.
+Prasyarat: Docker Compose; proyek Supabase yang dikonfigurasi untuk SIGAP; Langflow dengan flow Supabase; dan akses model sesuai provider. Node.js 22 diperlukan untuk pengembangan tanpa Docker.
 
----
+1. Salin `.env.example` menjadi `.env` di root, lalu isi konfigurasi Supabase, gateway, organisasi, model dan MCP. Jangan commit `.env` atau kredensial.
+2. Siapkan schema, organisasi, HMAC gateway dan akun administrator sesuai [panduan Supabase](backend/AUTH_SUPABASE.md) dan [komando](backend/COMMAND_WORKSPACES.md). Jangan menjalankan file bootstrap tes terhadap database produksi.
+3. Impor tujuh flow dari [`langflow/flows/supabase/`](langflow/flows/supabase/) ke Langflow, aktifkan MCP, dan atur `SIGAP_BACKEND_INTERNAL_URL` pada proses Langflow agar dapat menghubungi backend. Lihat [panduan Langflow](langflow/README.md).
+4. Atur `LANGFLOW_MCP_URL`, `LANGFLOW_API_KEY` dan provider model di `.env`. Untuk registrasi tanpa tautan verifikasi, nonaktifkan **Confirm email** pada Supabase Auth; pengaturan tersebut adalah pilihan deployment dan memiliki konsekuensi pada verifikasi kepemilikan email.
+5. Jalankan `docker compose up -d --build`. Buka `http://localhost:5173`; backend berada pada port 8787. Backend container menggunakan `host.docker.internal` untuk layanan lokal host yang relevan.
 
-## 2. Pengaturan Konfigurasi (Satu File `.env`)
+Konfigurasi production memerlukan Supabase. Mode mock dan SQLite memori terutama untuk fixture/test; bukan fallback diam-diam bagi koneksi produksi. Status health menunjukkan kesiapan konfigurasi, bukan bukti seluruh alur berhasil.
 
-Semua konfigurasi sistem disatukan ke dalam **satu berkas `.env`** di root repositori:
+## Pengujian
 
-Salin berkas template `.env.example` menjadi `.env`:
-
-```bash
-cp .env.example .env
-```
-
-### Parameter yang Tersedia di `.env`:
-
-| Variabel | Pilihan / Contoh | Penjelasan |
-| :--- | :--- | :--- |
-| `SIGAP_AGENT_PROVIDER` | `openai` (default) \| `gemini` \| `mock` \| `bob` | Runtime agen yang digunakan. `openai` untuk endpoint kompatibel OpenAI, `gemini` untuk live Gemini API, `mock` untuk simulasi lokal tanpa API, `bob` untuk IBM Bob ACP. |
-| `SIGAP_OPENAI_BASE_URL` | `http://localhost:20128/v1` | Base URL endpoint kompatibel OpenAI jika menggunakan provider `openai`. |
-| `SIGAP_OPENAI_MODEL` | `gemini/gemini-3.5-flash-lite(medium)` | Nama model untuk provider OpenAI. |
-| `SIGAP_OPENAI_API_KEY` | *(Opsional)* | API Key model OpenAI jika diperlukan oleh endpoint. |
-| `GEMINI_API_KEY` | `AIzaSy...` | API Key Google Gemini (jika menggunakan provider `gemini`). |
-| `GEMINI_MODEL` | `gemini-3.5-flash-lite` \| `gemini-3.8-flash` | Model Gemini yang digunakan untuk ekstraksi & percakapan. |
-| `SIGAP_GEMINI_TPM_LIMIT` | `200000` | Batas token per menit untuk model Gemini. |
-| `LANGFLOW_MCP_URL` | `http://localhost:7860/api/v1/mcp/project/<PROJECT_ID>/streamable` | Endpoint MCP Streamable HTTP dari project Langflow Anda. |
-| `LANGFLOW_API_KEY` | `sk-...` | API Key dari Langflow untuk mengakses tool MCP. |
-| `SIGAP_SESSION_TOKEN` | *(Biarkan kosong)* | Token keamanan sesi lokal. Dibiarkan kosong agar otomatis dibuat dan disinkronkan ke frontend tanpa input manual. |
-| `SIGAP_SHELTER_DB_PATH` | *(Opsional)* | Path absolut ke file database SQLite rekap posko (default: `output/rekap_posko.sqlite3`). |
-
-> **Mode Simulasi Cepat**: Jika kuota API habis atau ingin menguji antarmuka tanpa API eksternal, cukup setel `SIGAP_AGENT_PROVIDER=mock`.
-
----
-
-## 3. Menyiapkan Langflow (Execution Engine)
-
-Langflow berfungsi sebagai **Execution Engine** yang menjalankan 7 flow modular (setiap flow bertindak sebagai tool MCP).
-
-### Langkah 1: Jalankan Langflow Desktop
-Pastikan Langflow Desktop aktif di komputer Anda:
-- Akses UI Langflow di: **`http://localhost:7860`**
-
-### Langkah 2: Import 7 Flow JSON
-1. Di Langflow, klik tombol **New Project** atau buat project baru (beri nama, misalnya **`SIGAP`**).
-2. Klik tombol **Upload / Import** di dalam project tersebut.
-3. Import ketujuh file flow JSON yang berada di folder [`langflow/flows/`](langflow/flows/):
-   - `fetch_shelters.json` → Tool membaca rekap posko tersimpan dari database SQLite.
-   - `prepare_needs.json` → Tool masking PII & ekstraksi laporan ke format terstruktur.
-   - `validate_needs.json` → Tool validasi relasi angka, field kosong, dan integritas data.
-   - `calculate_gap.json` → Tool kalkulasi gap kebutuhan air (15 L/org/hari), pangan (2.100 kkal), sanitasi & hunian.
-   - `flag_anomalies.json` → Tool deteksi laporan duplikat & posko senyap (>24 jam).
-   - `upsert_shelter.json` → Tool penyimpanan data terverifikasi ke SQLite (memerlukan persetujuan petugas / HITL).
-   - `draft_bulletin.json` → Tool penyusunan draf buletin donatur.
-
-### Langkah 3: Pengaturan Input pada Node di Langflow
-Buka flow dan sesuaikan input berikut sesuai kebutuhan:
-
-1. **Pada flow `prepare_needs` (Ekstraksi LLM)**:
-   - Klik node **OpenAI Report Extractor**.
-   - Masukkan **API Key** model LLM ekstraksi Anda.
-   - Masukkan **Base URL** (misalnya `https://api.openai.com/v1` atau endpoint provider kompatibel OpenAI lainnya) dan **Model Name**.
-   *(Catatan: Jika memakai backend SIGAP dengan Gemini atau OpenAI, ekstraksi laporan ditangani langsung oleh runtime backend).*
-
-2. **Pada flow `fetch_shelters` & `upsert_shelter` (Penyimpanan Data)**:
-   - **Mode SQLite (Default)**: Gunakan path database yang sama pada reader, writer, dan validator. Kosongkan untuk memakai `SIGAP_SHELTER_DB_PATH` di proses Langflow atau default `output/rekap_posko.sqlite3`.
-   - **Mode Google Sheets (Opsional)**:
-     - Jika ingin terhubung ke Google Sheets, deploy skrip [`integrations/google_apps_script/Code.gs`](integrations/google_apps_script/Code.gs) sebagai Web App di Google Apps Script.
-     - Masukkan **Webhook URL** dan **Shared Secret** pada node *Logistics Storage Reader* (`fetch_shelters`) dan *Logistics Storage Writer* (`upsert_shelter`).
-
-3. **Pada flow `draft_bulletin` (Google Docs - Opsional)**:
-   - Masukkan Webhook URL Google Apps Script jika ingin mengaktifkan pembuatan Google Docs otomatis (hanya dieksekusi setelah persetujuan eksplisit petugas).
-
-### Langkah 4: Mengambil Kredensial MCP Langflow
-1. Masuk ke project SIGAP di Langflow, klik tab **MCP Server**.
-2. Pastikan ketujuh tool (`sigap_0_fetch_shelters` s/d `sigap_6_draft_bulletin`) dalam status **Enabled / Aktif**.
-3. Buat API Key Langflow: Klik **Settings** (ikon gear di pojok kanan atas) → **API Keys** → **Create New Key**, lalu salin kuncinya.
-4. Salin URL endpoint Streamable HTTP dari tab MCP Server (format: `http://localhost:7860/api/v1/mcp/project/<PROJECT_ID>/streamable`).
-5. Tempelkan URL dan API Key tersebut ke file [`.env`](.env) Anda pada variabel `LANGFLOW_MCP_URL` dan `LANGFLOW_API_KEY`.
-
----
-
-## 4. Pilihan Cara Menjalankan Projek
-
-### Opsi A: Menjalankan dengan Docker Compose (Direkomendasikan)
-
-Frontend (React + Nginx) dan Backend (Fastify Node 22) dijalankan secara bersamaan dalam container Docker:
-
-```bash
-docker compose up --build
-```
-
-- **Frontend**: Akses di **`http://localhost:5173`** atau **`http://localhost`**.
-- **Backend API**: Berjalan di **`http://localhost:8787`** (di-reverse proxy otomatis oleh Nginx).
-- **Auto-Sync Token**: Frontend langsung tersinkronisasi dengan backend tanpa perlu memasukkan token sesi manual.
-- **Koneksi ke Langflow**: Backend di dalam Docker otomatis mengarahkan `localhost:7860` ke `host.docker.internal:7860` sehingga langsung terhubung ke Langflow yang aktif di komputer host Anda.
-
-Untuk menghentikan container:
-```bash
-docker compose down
-```
-
----
-
-### Opsi B: Menjalankan Secara Lokal (Tanpa Docker)
-
-Jika Anda ingin menjalankan frontend dan backend langsung di Node.js host:
-
-#### 1. Jalankan Backend:
 ```powershell
 cd backend
-npm install
-npm start
-```
-*Backend akan berjalan di `http://127.0.0.1:8787` dan membaca konfigurasi dari `.env`.*
-
-#### 2. Jalankan Frontend (di terminal baru):
-```powershell
-cd frontend
-npm install
-npm run dev
-```
-*Buka browser di `http://127.0.0.1:5173`. Status koneksi akan langsung hijau (Ready) dan token sesi otomatis tersinkronisasi.*
-
----
-
-### Opsi C: Menjalankan di IBM Bob (Tanpa Docker — Sesuai Standar Percakapan Bob)
-
-Sistem menggunakan **IBM Bob sebagai User-Facing Conversation Agent** yang terhubung langsung ke **Langflow MCP Server**:
-
-```text
-[User] <--> [IBM Bob (MCP Client)] <--(MCP via uvx)--> [Langflow (MCP Server)]
-```
-
-#### Langkah Menghubungkan IBM Bob ke Langflow MCP:
-
-1. **Pastikan Prasyarat Tersedia**:
-   - Python 3.10+ dan `uv` terinstal di komputer Anda (`pip install uv`).
-   - Langflow Desktop berjalan di `http://localhost:7860` dengan project SIGAP aktif.
-
-2. **Konfigurasi MCP Bob**:
-   Buka berkas [`mcp/bob_mcp_config.json`](mcp/bob_mcp_config.json). Konfigurasi menggunakan bridge resmi `uvx --with "mcp<2.0.0>" mcp-proxy`:
-   ```json
-   {
-     "mcpServers": {
-       "sigap": {
-         "command": "cmd",
-         "args": [
-           "/c",
-           "uvx",
-           "--with",
-           "mcp<2.0.0>",
-           "mcp-proxy",
-           "--headers",
-           "x-api-key",
-           "<LANGFLOW_API_KEY>",
-           "--transport",
-           "streamablehttp",
-           "http://localhost:7860/api/v1/mcp/project/<PROJECT_ID>/streamable"
-         ]
-       }
-     }
-   }
-   ```
-   *Ganti `<LANGFLOW_API_KEY>` dan `<PROJECT_ID>` dengan kredensial Langflow Anda.*
-
-3. **Daftarkan MCP Server di IBM Bob**:
-   - Pada aplikasi IBM Bob (Bob Desktop / Bob Shell CLI), tambahkan MCP Server menggunakan konfigurasi JSON di atas.
-   - Verifikasi bahwa ketujuh tool SIGAP (`fetch_shelters`, `prepare_needs`, `validate_needs`, `calculate_gap`, `flag_anomalies`, `upsert_shelter`, `draft_bulletin`) terdeteksi di Bob.
-
-4. **Setel System Prompt / Instruksi Bob**:
-   Salin seluruh isi instruksi dari berkas [**`mcp/bob_agent_instructions.md`**](mcp/bob_agent_instructions.md) dan masukkan sebagai *System Prompt / Agent Instructions* pada IBM Bob.
-   Instruksi ini mengatur:
-   - Alur Outside-In: baca rekap tersimpan (`fetch_shelters`), ekstraksi & validasi (`prepare_needs`), deteksi anomali (`flag_anomalies`).
-   - Penegakan **Human-in-the-Loop**: Bob dilarang melakukan aksi simpan (`upsert_shelter`) sebelum petugas menyetujui pratinjau snapshot, hash integritas, dan keputusan pembersihan field (`clear / keep / defer`).
-   - Kalkulasi kebutuhan dasar Sphere dan draf buletin.
-
-5. **Mulai Percakapan di Bob**:
-   Buka chat IBM Bob dan tempelkan contoh laporan lapangan WhatsApp (misal dari berkas [`data/sample_wa_export.txt`](data/sample_wa_export.txt)). Bob akan memanggil tool Langflow secara bertahap dan memandu proses hingga selesai.
-
----
-
-## 5. Struktur Direktori Proyek
-
-```text
-├── .env.example        # Template variabel lingkungan
-├── docker-compose.yml  # Orkestrasi container frontend & backend
-├── backend/            # Fastify, SQLite, runtime OpenAI/Gemini/MCP, adapter Bob ACP
-│   ├── Dockerfile
-│   ├── src/
-│   ├── scripts/        # Skrip pengujian smoke, migrasi SQLite & MCP probe
-│   └── tests/          # Suite pengujian unit & integrasi backend
-├── frontend/           # React + Vite Workspace untuk operator posko
-│   ├── Dockerfile
-│   ├── nginx.conf      # Reverse proxy API & streaming SSE
-│   ├── src/            # Komponen visual, formulir klarifikasi, dialog review
-│   └── tests/          # Suite pengujian frontend & Playwright e2e
-├── langflow/           # Asset eksekusi Langflow
-│   ├── flows/          # 7 file flow JSON untuk di-import ke Langflow
-│   ├── components/     # Kode Python custom components
-│   ├── lib/            # Kontrak data SIGAP & modul helper SQLite
-│   ├── scripts/        # Skrip migrasi CSV ke SQLite & sinkronisasi
-│   ├── tests/          # Pengujian pytest migrasi SQLite
-│   └── prompts/        # Template prompt ekstraksi
-├── mcp/                # Konfigurasi MCP dan instruksi prompt Bob/Gemini/OpenAI
-├── integrations/       # Skrip Google Apps Script (Sheets & Docs)
-├── data/               # Contoh data teks laporan bencana, CSV impor, dan dataset evaluasi
-│   └── synthetic/      # Template impor CSV posko & paket uji pengguna
-├── dokumentasi-proyek/ # Tangkapan layar antarmuka Web UI, Bob, Langflow, dan Sheets
-└── output/             # Direktori output file database SQLite & ekspor CSV
-```
-
----
-
-## 6. Pengujian & Verifikasi (Testing)
-
-Jalankan suite pengujian untuk memvalidasi integritas logika, kontrak data, dan keandalan sistem:
-
-```powershell
-# 1. Jalankan pengujian backend Fastify (135+ pengujian)
-cd backend
+npm ci
+npm run build
 npm test
-
-# 2. Jalankan pengujian frontend React (22+ pengujian unit)
 cd ../frontend
+npm ci
+npm run build
 npm test
-
-# 3. Jalankan pengujian End-to-End Playwright
-cd frontend
-npx playwright test
-
-# 4. Jalankan pengujian migrasi SQLite Langflow
-python -m pytest langflow/tests/test_sqlite_migration.py -q
+npx playwright install chromium
+npm run test:e2e
 ```
 
----
+Tes browser default memakai server dan fixture terisolasi; baca [panduan tes](frontend/tests/e2e/README.md). Uji Langflow Playground → MCP → runtime → alur end-to-end secara terpisah pada lingkungan uji; hasil tes mock tidak membuktikan integrasi live.
 
-## 7. Referensi & Panduan Teknis
+## Dokumentasi dan keamanan
 
-- [Panduan Migrasi SQLite Langflow](langflow/SQLITE_MIGRATION.md)
-- [Panduan Peserta Uji Validasi Pengguna](data/synthetic/user-validation/PANDUAN-PESERTA.md)
-- [Panduan Teknis 7 Flow Langflow](langflow/README.md)
-- [Dokumentasi Layanan Backend](backend/README.md)
-- [Dokumentasi Antarmuka Web Workspace](frontend/README.md)
-- [Instruksi Konfigurasi IBM Bob MCP](mcp/bob_agent_instructions.md)
-- [Instruksi Konfigurasi OpenAI MCP](mcp/openai_agent_instructions.md)
+- [Backend](backend/README.md) · [Frontend](frontend/README.md) · [Langflow](langflow/README.md)
+- [Panduan autentikasi dan deployment](backend/AUTH_SUPABASE.md) · [Ruang operasi](backend/COMMAND_WORKSPACES.md)
+- [Data sintetis untuk uji pengguna](data/synthetic/user-validation/README.md) · [sampel OCR](data/synthetic/ocr/README.md)
+
+Simpan password database, secret gateway, API key, backup, token dan data pengguna di luar repo. `.gitignore` tidak menghapus rahasia yang sudah pernah di-commit. Gunakan data sintetis untuk demo publik dan periksa riwayat Git sebelum publikasi.

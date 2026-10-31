@@ -1,0 +1,31 @@
+import {test,expect} from '@playwright/test';
+
+test('refresh restores independent drafts and numeric clarification sends structured fields',async({page})=>{
+ const a={batch_id:'stored-a',report_id:'R002',shelter_name:'Posko Harapan',village:'Sukamaju',total_people:98,male:43,female:55,elderly:12};
+ const b={batch_id:'stored-b',report_id:'R001',shelter_name:'Posko Cibening',village:'Cibineng',total_people:100,male:55,female:45,elderly:7};
+ const reviews=[a,b].map((r,i)=>({batchId:String(i+1).repeat(32),preview:{snapshot_id:String(i+1).repeat(32),records:[{...r,elderly:i?9:14,update_target:{batch_id:r.batch_id,report_id:r.report_id}}]}}));
+ const profile={user_id:'recovery-user',display_name:'Petugas',organization_id:'org',role:'petugas',status:'active',scopes:['posko-uji']};
+ await page.route(/^https:\/\/fonts\.(googleapis|gstatic)\.com\//,r=>r.abort());
+ await page.route('**/api/health',r=>r.fulfill({json:{status:'ok',backend:'ready',mode:'live',agent:'openai'}}));
+ await page.route('**/api/auth/login',r=>r.fulfill({json:{access_token:'synthetic-access',refresh_token:'synthetic-refresh',expires_in:3600,profile}}));
+ await page.route('**/api/auth/me',r=>r.fulfill({json:{profile}}));
+ await page.route('**/api/contexts',r=>r.fulfill({json:[{context_id:'posko-uji',name:'Pos Komando Uji'}]}));
+ await page.route('**/api/sessions',r=>r.fulfill({json:{session_id:'resumed-session',context_id:'posko-uji',resumed:true}}));
+ await page.route('**/api/sessions/*/recovery',r=>r.fulfill({json:{records:[a,b],reviews,after_event_id:7}}));
+ await page.route('**/api/sessions/*/events',r=>{expect(r.request().headers()['last-event-id']).toBe('7');return r.fulfill({contentType:'text/event-stream',body:': keep-alive\n\n'});});
+ await page.goto('/');
+ await expect(page.getByRole('heading',{name:'Masuk ke SIGAP'})).toBeVisible();
+ await page.getByLabel('Email',{exact:true}).fill('test@example.test');await page.getByLabel('Kata sandi',{exact:true}).fill('Uji12345');await page.getByRole('button',{name:'Masuk',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Tinjau perubahan',exact:true})).toHaveCount(2);
+ await page.reload();
+ await expect(page.getByRole('button',{name:'Tinjau perubahan',exact:true})).toHaveCount(2);
+ await page.getByRole('navigation').getByRole('button',{name:'Rekap',exact:true}).click();await expect(page.getByLabel('Perubahan yang akan disimpan').locator('option')).toHaveCount(2);
+ await page.getByRole('button',{name:'Posko Harapan',exact:true}).click();
+ const dialog=page.getByRole('region',{name:'Halaman klarifikasi posko',exact:true});
+ await expect(dialog.locator('.detail-grid div').filter({has:page.getByText('Lansia',{exact:true})})).toContainText('14');
+ if(await dialog.getByRole('button',{name:'Tulis klarifikasi'}).count())await dialog.getByRole('button',{name:'Tulis klarifikasi'}).click();await dialog.getByRole('spinbutton',{name:'Lansia',exact:true}).fill('16');
+ let payload:any;await page.route('**/api/sessions/*/messages',r=>{payload=r.request().postDataJSON();return r.fulfill({status:202,json:{batch_id:'3'.repeat(32),status:'processing'}});});
+ await dialog.getByRole('button',{name:'Validasi perubahan'}).click();
+ await expect.poll(()=>payload?.correction?.changes).toEqual({elderly:16});
+ expect(payload.correction.target.report_id).toBe('R002');expect(payload.correction.target.batch_id).toBe('stored-a');expect(payload.correction.base_key).toBeTruthy();
+});

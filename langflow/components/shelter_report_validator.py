@@ -16,7 +16,7 @@ from sigap_sqlite import read_sqlite, compare_stored
 import json
 import re
 from datetime import datetime, timedelta, timezone
-from sigap_contracts import save_snapshot, load_snapshot, normalize_stock, load_source, load_source_context, get_correction_record, get_correction_base, get_candidate_record, clear_options, quality_status
+from sigap_contracts import save_snapshot, save_candidate_snapshot, load_snapshot, normalize_stock, load_source, load_source_context, get_correction_record, get_correction_base, get_candidate_record, clear_options, quality_status
 
 from lfx.custom.custom_component.component import Component
 from lfx.io import MessageTextInput, Output, StrInput
@@ -200,6 +200,8 @@ def validate(llm_output: str, source_text: str) -> dict:
             continue
         seen.add(rid)
         clean = dict(rec)
+        clean.pop('shelter_id', None)  # Stable identity is allocated/resolved by storage, never the LLM.
+        clean.pop('disaster_id', None)
         clean.pop("update_target", None)  # Target berasal dari sumber server, bukan model.
         clean.pop("candidate_lineage", None)  # Pasangan identitas hanya dari kandidat immutable server.
         clean.pop('storage_baseline',None)  # Baseline/konflik hanya dihasilkan pembacaan SQLite server.
@@ -208,6 +210,12 @@ def validate(llm_output: str, source_text: str) -> dict:
         header = next((m.group(0) for m in REPORT_HEADER.finditer(source_text) if m.group(1) == rid), "")
         timestamp = re.search(r"waktu=([^|\n]+)", header)
         clean["reported_at"] = timestamp.group(1).strip() if timestamp and timestamp.group(1).strip() != "tidak diketahui" else None
+        explicit_time = re.search(r"waktu laporan:\s*(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2})", sources[rid], re.I)
+        if explicit_time and str(rec.get("reported_at") or "").replace("T", " ") == explicit_time.group(1).replace("T", " "):
+            try:
+                clean["reported_at"] = datetime.fromisoformat(explicit_time.group(1)).strftime("%Y-%m-%d %H:%M")
+            except ValueError:
+                pass
         unverified = []
 
         for field in NUMERIC_FIELDS:
@@ -239,6 +247,11 @@ def validate(llm_output: str, source_text: str) -> dict:
                 consistency.append({"field": "male+female", "reason": "tidak sama dengan total jiwa; perlu klarifikasi"})
         clean["validation_issues"] = consistency
         clean["field_provenance"] = {field: {"report_id": rid, "reported_at": clean["reported_at"]} for field in NUMERIC_FIELDS if clean[field] is not None}
+        for field, proof in clean["field_provenance"].items():
+            for line in sources[rid].splitlines():
+                if field_supported(field, clean[field], line):
+                    proof["source_excerpt"] = line[:600]
+                    break
         stock, context, stock_issues = normalize_stock(rec)
         source_times = {}
         for match in re.finditer(r"(\d{1,2}/\d{1,2}/\d{2,4})\s*(?:jam\s*)?(\d{1,2})[.:](\d{2})", sources[rid], re.I):
@@ -420,6 +433,11 @@ def build_snapshots(records, sources):
         if re.search(r"\b(?:kosongkan|mengosongkan|pengosongan|dikosongkan)\s+(?:field\s+)?(?:disabilitas|disability)\b|\b(?:disabilitas|disability)\s+dikosongkan\b", source):
             if "disability" not in merged["pending_clear_fields"]:
                 merged["pending_clear_fields"].append("disability")
+        # Clear proposals are read from explicit source instructions, never applied before approval.
+        allowed_clear = set(NUMERIC_FIELDS) | {"urgent_needs", "stock", "stock_context", "notes"}
+        for field in re.findall(r"usulkan pengosongan field:\s*([a-z_]+)\b", source, re.I):
+            if field in allowed_clear and field not in merged["pending_clear_fields"]:
+                merged["pending_clear_fields"].append(field)
         total, male, female = merged.get("total_people"), merged.get("male"), merged.get("female")
         if total is not None and male is not None and female is not None and male + female != total:
             merged["validation_issues"] = merged["validation_issues"] + [{"field": "male+female", "reason": "Data terpilah dari sumber/waktu berbeda tidak cocok dengan total terbaru; perlu klarifikasi."}]
@@ -511,6 +529,12 @@ def merge_correction(records, target, base=None, candidate=False, source_text=""
     merged["report_id"], merged["batch_id"] = old["report_id"] if candidate else patch["report_id"], patch["batch_id"]
     if "total_people" in changed:
         merged["is_estimate"] = patch.get("is_estimate", False)
+    if re.search(r"jumlah jiwa merupakan estimasi", source_text, re.I):
+        merged["is_estimate"] = True
+    elif re.search(r"jumlah jiwa sudah dikonfirmasi", source_text, re.I):
+        merged["is_estimate"] = False
+    updated_stock = [key for key, amount in patch.get("stock", {}).items() if amount is not None]
+    merged["stock_issues"] = [issue for issue in old.get("stock_issues", []) if not any(key in str(issue) for key in updated_stock)] + patch.get("stock_issues", [])
     merged["reported_at"] = patch.get("reported_at") or datetime.now(timezone(timedelta(hours=7))).strftime("%Y-%m-%d %H:%M")
     merged["pending_clear_fields"] = list(dict.fromkeys(old.get("pending_clear_fields", []) + patch.get("pending_clear_fields", [])))
     merged["unverified_numbers"] = [u for u in old.get("unverified_numbers", []) if u.get("field") not in changed] + patch.get("unverified_numbers", [])
@@ -732,7 +756,7 @@ class ShelterReportValidator(Component):
                 proof.setdefault("batch_id", reference["batch_id"])
         result["batch_id"] = reference["batch_id"]
         try:
-            result.update(save_snapshot({"snapshot_kind": "correction_candidate" if source_context.get("correction_target") or any(r.get("update_target") for r in result["snapshot_records"]) else "report_candidate", "records": result["snapshot_records"], "report_records": audit_records,
+            result.update(save_candidate_snapshot({"snapshot_kind": "correction_candidate" if source_context.get("correction_target") or any(r.get("update_target") for r in result["snapshot_records"]) else "report_candidate", "records": result["snapshot_records"], "report_records": audit_records,
                                          "issues": result["issues"] + result["snapshot_issues"], "snapshot_issues":result["snapshot_issues"]}))
         except (OSError, ValueError) as exc:
             return Message(text=f"GAGAL: tidak dapat menyimpan snapshot validasi ({exc}). Jangan menghitung/menulis dari JSON bebas.")

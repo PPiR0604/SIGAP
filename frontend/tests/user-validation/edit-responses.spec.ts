@@ -56,7 +56,7 @@ test('edit live bergantian dan rename mempertahankan cakupan posko serta menghit
   await expect(dialog.getByRole('region',{name:'Hasil perhitungan kebutuhan'})).toContainText('1.560 L/hari');
   await dialog.getByRole('button',{name:'Tutup dialog'}).click();
   await expect(page.locator('tbody tr')).toHaveCount(8);
-  await expect(page.getByLabel('Kandidat untuk disetujui').locator('option')).toHaveCount(2);
+  await expect(page.getByLabel('Perubahan yang akan disimpan').locator('option')).toHaveCount(2);
   const harapan=page.locator('tbody tr').filter({has:page.getByRole('button',{name:'Posko Harapan',exact:true})});
   await expect(harapan.filter({hasText:'Sukamaju'}).locator('.population')).toHaveText('102');
   await expect(harapan.filter({hasText:'Cipandan'}).locator('.population')).toHaveText('40');

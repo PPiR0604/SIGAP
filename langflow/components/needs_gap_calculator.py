@@ -30,7 +30,52 @@ STANDARDS = {
     "kcal_per_person_day": 2100,
     "people_per_latrine": 20,
     "shelter_m2_per_person": 3.5,
+    # Sphere 2018 Appendix 6, printed p.231: rounded population planning values.
+    "protein_g_per_person_day": 53,
+    "fat_g_per_person_day": 40,
 }
+
+
+def population_planning(rec: dict) -> dict:
+    """Allocate the general population reference, never prescribe age-specific diets.
+
+    Operational age bands confirmed for SIGAP: under-5 and 5-17 are separate.
+    Pregnancy, breastfeeding and disability overlap the age bands; never add them.
+    Sphere does not specify a carbohydrate target. The equivalent below is ONLY
+    the remaining energy scenario at the Appendix 6 protein/fat reference values.
+    """
+    count = lambda value: isinstance(value, int) and not isinstance(value, bool) and value >= 0
+    people = rec.get("total_people")
+    valid_total = count(people)
+    groups = [("under5", rec.get("infants_toddlers")), ("children", rec.get("children")),
+              ("elderly", rec.get("elderly"))]
+    issues = []
+    missing = any(not count(n) for _, n in groups)
+    known = sum(n for _, n in groups if count(n))
+    inconsistent = valid_total and known > people
+    if not valid_total:
+        issues.append("Jumlah jiwa belum valid; alokasi belum dapat dihitung.")
+    if missing:
+        issues.append("Lengkapi balita, anak, dan lansia sebelum menghitung sisa dewasa; kosong bukan nol.")
+    if inconsistent:
+        issues.append("Jumlah balita, anak, dan lansia melebihi total; periksa pembagian usia.")
+    adult = people - known if valid_total and not missing and not inconsistent else None
+    # Reorder age groups; adults are a residual, not an independently reported count.
+    ordered = [groups[0], groups[1], ("adults", adult), groups[2]]
+    allocation_valid = valid_total and not inconsistent
+    rows = [{"key": key, "people": n if count(n) else None,
+             "water_l": n * STANDARDS["water_l_per_person_day"] if count(n) and allocation_valid else None,
+             "energy_kcal": n * STANDARDS["kcal_per_person_day"] if count(n) and allocation_valid else None}
+            for key, n in ordered]
+    energy = people * STANDARDS["kcal_per_person_day"] if valid_total else None
+    protein = people * STANDARDS["protein_g_per_person_day"] if valid_total else None
+    fat = people * STANDARDS["fat_g_per_person_day"] if valid_total else None
+    # 4 kcal/g protein and carbohydrate, 9 kcal/g fat. Not a Sphere minimum for carbs.
+    carbohydrate = (energy - protein * 4 - fat * 9) / 4 if valid_total else None
+    return {"schema_version": "sphere2018-population-v1", "age_groups": rows,
+            "complete_age_counts": valid_total and not missing and not inconsistent,
+            "nutrition": {"energy_kcal": energy, "protein_g": protein, "fat_g": fat,
+                          "carbohydrate_equivalent_g": carbohydrate}, "issues": issues}
 # Kata kunci kebutuhan kritis -> kategori. Kategori kritis menambah skor prioritas.
 CRITICAL_KEYWORDS = {
     "air": ["air bersih", "air minum", "air ", "galon"],
@@ -81,6 +126,7 @@ def assess_shelter(rec: dict) -> dict:
         "total_people": people,
         "is_estimate": rec.get("is_estimate") is True,
         "needs": {},
+        "planning": population_planning(rec),
         "gaps": {},
         "priority": "PERLU DATA",
         "score": None,

@@ -4,6 +4,8 @@ Semua nama posko dan angka dalam paket ini **sintetis untuk simulasi**, bukan la
 
 Mulai dari [PANDUAN-PESERTA.md](PANDUAN-PESERTA.md). Berikan panduan dan berkas input kepada peserta. Simpan `expected-results.json` untuk fasilitator agar peserta tidak diberi jawaban terlebih dahulu.
 
+**Paket tambahan dengan nomor telepon dummy:** gunakan [sesi-manual/PANDUAN-PESERTA.md](sesi-manual/PANDUAN-PESERTA.md) untuk delapan tugas berurutan dengan input siap salin, CSV konflik, pemeriksaan penyamaran nomor, serta acuan fasilitator dan lembar observasi. Pilih paket lama atau paket tambahan untuk satu sesi; jangan menjalankan keduanya berurutan pada baseline yang sama.
+
 | Berkas | Kegunaan |
 | --- | --- |
 | `baseline.json` | Seed 8 posko / 630 jiwa; referensi administratif, bukan berkas unggahan peserta |

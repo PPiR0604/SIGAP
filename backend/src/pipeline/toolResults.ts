@@ -95,12 +95,25 @@ export const SigapReadResultSchema = z.object({
 
 export type SigapReadResult = z.infer<typeof SigapReadResultSchema>;
 
+const planningQuantity=z.number().finite().nonnegative().nullable();
+const SpherePlanningSchema=z.object({
+  schema_version:z.literal('sphere2018-population-v1'),
+  complete_age_counts:z.boolean(),
+  nutrition:z.object({energy_kcal:planningQuantity,protein_g:planningQuantity,fat_g:planningQuantity,carbohydrate_equivalent_g:planningQuantity}),
+  age_groups:z.array(z.object({key:z.enum(['under5','children','adults','elderly']),people:z.number().int().nonnegative().nullable(),water_l:planningQuantity,energy_kcal:planningQuantity})).length(4),
+  issues:z.array(z.string())
+}).superRefine((value,ctx)=>{
+  if(new Set(value.age_groups.map(row=>row.key)).size!==4)ctx.addIssue({code:'custom',path:['age_groups'],message:'Kelompok usia harus unik.'});
+  if(value.complete_age_counts&&value.age_groups.some(row=>row.people===null||row.water_l===null||row.energy_kcal===null))ctx.addIssue({code:'custom',path:['complete_age_counts'],message:'Rincian usia lengkap harus memiliki seluruh angka.'});
+});
+
 export const GapResultSchema = z.object({
   shelters: z.array(z.object({
     shelter_name: z.string(),
     village: z.string().nullable().optional(),
     total_people: z.number().int().nonnegative().nullable().optional(),
     is_estimate: z.boolean().nullable().optional(),
+    planning:SpherePlanningSchema.optional(),
     priority: z.string(),
     reasons: z.array(z.string()).default([]),
     issues: z.array(z.string()).default([]),

@@ -1,10 +1,10 @@
 import type { FastifyPluginAsync } from 'fastify';
-import type { SigapRepository } from '../db/repo.js';
+import type { Repository } from '../db/contract.js';
 import type { AgentRuntime } from '../acp/types.js';
 import { FakeAgentRuntime } from '../acp/fakeRuntime.js';
 
 export function createHealthRoute(
-  repo: SigapRepository,
+  repo: Repository,
   runtime: AgentRuntime,
   writeControlVerified = false,
   mcpConfigured = false,
@@ -26,11 +26,11 @@ export function createHealthRoute(
         write_enabled: !simulated && agentAvailable && writeControlVerified,
         mode: simulated ? 'mock_mode' : agentAvailable && mcpConfigured ? 'live' : 'degraded',
         timestamp: new Date().toISOString(),
-        session_token: sessionToken
+        ...(sessionToken?{session_token:sessionToken}:{})
       });
     });
 
-    fastify.get('/api/auth/token', async (_req, reply) => {
+    if(sessionToken)fastify.get('/api/auth/token', async (_req, reply) => {
       return reply.send({ token: sessionToken });
     });
   };

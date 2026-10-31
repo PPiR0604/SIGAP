@@ -2,15 +2,15 @@ import { getSessionToken } from './api.js';
 
 type Handlers = Record<string, (payload: any) => void>;
 
-export function connectEventStream(url: string, token: string | (() => string), handlers: Handlers,
-  onError: (error: Error) => void = () => {}): { close(): void } {
+export function connectEventStream(url: string, token: string | (() => string | Promise<string>), handlers: Handlers,
+  onError: (error: Error) => void = () => {},afterEventId=0): { close(): void } {
   const controller = new AbortController();
-  let lastId = '';
+  let lastId = afterEventId?String(afterEventId):'';
   const run = async () => {
     while (!controller.signal.aborted) {
       let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
       try {
-        const activeToken = typeof token === 'function' ? token() : (token || getSessionToken());
+        const activeToken = typeof token === 'function' ? await token() : (token || getSessionToken());
         const response = await fetch(url, { headers: { ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {}), Accept: 'text/event-stream', ...(lastId ? { 'Last-Event-ID': lastId } : {}) }, signal: controller.signal });
         if (!response.ok || !response.body) {
           const error = new Error(`Koneksi event gagal (${response.status}).`);

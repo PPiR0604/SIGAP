@@ -45,208 +45,61 @@ export interface BatchStateResponse {
   updated_at: string;
 }
 
-let activeSessionToken = '';
-
-export function getSessionToken(): string {
-  try {
-    return activeSessionToken || localStorage.getItem('sigap_token') || (import.meta as any).env?.VITE_SIGAP_TOKEN || '';
-  } catch {
-    return activeSessionToken || '';
-  }
+export interface AuthProfile {user_id:string;display_name:string;organization_id:string|null;role:'admin'|'petugas'|'viewer'|null;status:'pending'|'active'|'disabled';scopes:string[]}
+export interface AuthSession {access_token:string;refresh_token:string;expires_at?:number;expires_in?:number;profile:AuthProfile}
+let activeSessionToken='';
+let authSession:AuthSession|null=null;
+let refreshPromise:Promise<string>|null=null;
+const authKey='sigap_auth_session';
+export function getSessionToken():string {return activeSessionToken;}
+export function setSessionToken(token:string):void {activeSessionToken=token;try{if(token)localStorage.setItem('sigap_token',token);else localStorage.removeItem('sigap_token');}catch{/* Storage is optional. */}}
+export function clearAuthSession(){authSession=null;setSessionToken('');try{sessionStorage.removeItem(authKey);for(const key of Object.keys(sessionStorage))if(key.startsWith('sigap:clarification:'))sessionStorage.removeItem(key);}catch{} }
+function acceptSession(session:AuthSession){
+  session.expires_at=session.expires_at??Math.floor(Date.now()/1000)+(session.expires_in??3600);
+  authSession=session;activeSessionToken=session.access_token;
+  try{sessionStorage.setItem(authKey,JSON.stringify(session));localStorage.removeItem('sigap_token');}catch{}
+  return session;
 }
-
-export function setSessionToken(token: string): void {
-  activeSessionToken = token;
-  try {
-    localStorage.setItem('sigap_token', token);
-  } catch {
-    // ignore
-  }
+export class HttpResponseError extends Error {constructor(message:string,public status:number){super(message);this.name='HttpResponseError';}}
+async function parseResponse(res:Response):Promise<any>{
+  if(res.status===204)return null;
+  const body=await res.json().catch(()=>({}));
+  if(!res.ok){const code=body?.error?.code;const messages:Record<string,string>={UNAUTHORIZED:'Sesi berakhir. Silakan masuk kembali.',SESSION_REVOKED:'Sesi dicabut. Silakan masuk kembali.',ACCOUNT_INACTIVE:'Akun belum aktif. Hubungi admin.',SCOPE_DENIED:'Anda belum ditugaskan ke pos komando ini.',READ_ONLY_ROLE:'Akun ini hanya dapat membaca publikasi.',RATE_LIMITED:'Terlalu banyak percobaan. Tunggu sebentar.'};throw new HttpResponseError(messages[code]||body?.error?.message||`Permintaan gagal (${res.status}${code?`: ${code}`:''}).`,res.status);}
+  return body;
 }
-
-export async function fetchSessionToken(): Promise<string> {
-  try {
-    const res = await fetch('/api/auth/token');
-    if (res.ok) {
-      const data = await res.json();
-      if (data?.token) {
-        setSessionToken(data.token);
-        return data.token;
-      }
-    }
-  } catch {
-    // ignore
-  }
-  return getSessionToken();
+export async function login(email:string,password:string):Promise<AuthSession>{return acceptSession(await parseResponse(await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})})));}
+export async function refreshAuthToken():Promise<string>{
+  if(!authSession)return activeSessionToken;
+  if(refreshPromise)return refreshPromise;
+  const current=authSession;
+  refreshPromise=(async()=>{
+    const res=await fetch('/api/auth/refresh',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refresh_token:current.refresh_token})});
+    if(!res.ok){if([400,401,403].includes(res.status)){clearAuthSession();window.dispatchEvent(new Event('sigap-auth-expired'));}await parseResponse(res);}
+    const next=await res.json();if(authSession!==current)throw new Error('Sesi telah berubah.');acceptSession(next);return next.access_token;
+  })().finally(()=>{refreshPromise=null;});return refreshPromise;
 }
-
-export async function checkBackendHealth(): Promise<HealthResponse | null> {
-  try {
-    const res = await fetch('/api/health');
-    if (!res.ok) return null;
-    const data: HealthResponse = await res.json();
-    if (data.session_token) {
-      setSessionToken(data.session_token);
-    }
-    return data;
-  } catch {
-    return null;
-  }
+export async function restoreAuthSession():Promise<AuthSession|null>{
+  try{const saved=sessionStorage.getItem(authKey);if(!saved)return null;const parsed=JSON.parse(saved);if(!parsed.access_token||!parsed.refresh_token)return null;authSession=parsed;activeSessionToken=parsed.access_token;
+    await ensureSessionToken();const result=await authenticatedRequest('/api/auth/me');authSession!.profile=result.profile;return authSession;
+  }catch(error){if(!authSession)return null;throw error;}
 }
-
-export async function ensureSessionToken(): Promise<string> {
-  let token = getSessionToken();
-  if (token) return token;
-  const health = await checkBackendHealth();
-  if (health?.session_token) return health.session_token;
-  return await fetchSessionToken();
+export async function logout(){try{await authenticatedRequest('/api/auth/logout',{method:'POST'});}finally{clearAuthSession();}}
+export async function checkBackendHealth():Promise<HealthResponse|null>{try{const res=await fetch('/api/health');if(!res.ok)return null;const data=await res.json();if(data.session_token)setSessionToken(data.session_token);return data;}catch{return null;}}
+export async function ensureSessionToken():Promise<string>{if(authSession){if((authSession.expires_at??0)*1000<=Date.now()+60000)return refreshAuthToken();return activeSessionToken;}return activeSessionToken;}
+export async function fetchSessionToken():Promise<string>{await checkBackendHealth();return activeSessionToken;}
+export async function authenticatedRequest(url:string,options:RequestInit={}):Promise<any>{
+  let token=await ensureSessionToken();
+  const request=()=>fetch(url,{...options,headers:{...(options.body?{'Content-Type':'application/json'}:{}),...options.headers,...(token?{Authorization:`Bearer ${token}`}:{})}});
+  let res=await request();
+  if(res.status===401&&authSession){token=await refreshAuthToken();res=await request();}
+  if(res.status===401&&authSession){clearAuthSession();window.dispatchEvent(new Event('sigap-auth-expired'));}
+  return parseResponse(res);
 }
-
-export async function createBackendSession(contextId = 'posko-sumedang'): Promise<SessionResponse> {
-  let token = await ensureSessionToken();
-  let res = await fetch('/api/sessions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {})
-    },
-    body: JSON.stringify({ context_id: contextId })
-  });
-
-  if (res.status === 401) {
-    const freshHealth = await checkBackendHealth();
-    if (freshHealth?.session_token && freshHealth.session_token !== token) {
-      token = freshHealth.session_token;
-      res = await fetch('/api/sessions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({ context_id: contextId })
-      });
-    }
-  }
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error?.message || `Gagal membuat sesi (${res.status}).`);
-  }
-  return await res.json();
+export async function createBackendSession(contextId='posko-sumedang'):Promise<SessionResponse>{return authenticatedRequest('/api/sessions',{method:'POST',body:JSON.stringify({context_id:contextId,resume:true})});}
+export async function sendBackendMessage(sessionId:string,text:string,filename?:string,correction?:unknown):Promise<MessageResponse>{return authenticatedRequest(`/api/sessions/${sessionId}/messages`,{method:'POST',body:JSON.stringify({request_id:crypto.randomUUID(),text,filename,...(correction?{correction}:{})})});}
+export interface DocumentExtraction {text:string;filename:string;pages:number;engine:'tesseract';source_sha256:string;warnings:string[]}
+export async function extractReportDocument(sessionId:string,file:File,signal:AbortSignal):Promise<DocumentExtraction>{
+ return authenticatedRequest(`/api/sessions/${encodeURIComponent(sessionId)}/documents/extract`,{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Document-Name':encodeURIComponent(file.name)},body:file,signal});
 }
-
-export async function sendBackendMessage(
-  sessionId: string,
-  text: string,
-  filename?: string
-): Promise<MessageResponse> {
-  let token = await ensureSessionToken();
-  const requestId = 'req-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
-
-  let res = await fetch(`/api/sessions/${sessionId}/messages`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {})
-    },
-    body: JSON.stringify({
-      request_id: requestId,
-      text,
-      filename
-    })
-  });
-
-  if (res.status === 401) {
-    const freshHealth = await checkBackendHealth();
-    if (freshHealth?.session_token && freshHealth.session_token !== token) {
-      token = freshHealth.session_token;
-      res = await fetch(`/api/sessions/${sessionId}/messages`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({
-          request_id: requestId,
-          text,
-          filename
-        })
-      });
-    }
-  }
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error?.message || `Gagal mengirim pesan (${res.status}).`);
-  }
-  return await res.json();
-}
-
-export async function getBatchState(batchId: string): Promise<BatchStateResponse> {
-  let token = await ensureSessionToken();
-  let res = await fetch(`/api/batches/${batchId}`, {
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {})
-    }
-  });
-
-  if (res.status === 401) {
-    const freshHealth = await checkBackendHealth();
-    if (freshHealth?.session_token && freshHealth.session_token !== token) {
-      token = freshHealth.session_token;
-      res = await fetch(`/api/batches/${batchId}`, {
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        }
-      });
-    }
-  }
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error?.message || `Gagal mengambil status batch (${res.status}).`);
-  }
-  return await res.json();
-}
-
-export async function submitBatchDecision(
-  batchId: string,
-  decision: {
-    action: 'approve_save' | 'approve_partial_save' | 'back_to_review';
-    snapshot_id: string;
-    partial_acknowledged: boolean;
-    clear_decisions: Record<string, Record<string, 'clear' | 'keep' | 'defer'>>;
-    conflict_decisions?: Record<string,Record<string,'keep'|'incoming'>>;
-  }
-): Promise<{ success: boolean; status: string }> {
-  let token = await ensureSessionToken();
-  let res = await fetch(`/api/batches/${batchId}/decisions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {})
-    },
-    body: JSON.stringify(decision)
-  });
-
-  if (res.status === 401) {
-    const freshHealth = await checkBackendHealth();
-    if (freshHealth?.session_token && freshHealth.session_token !== token) {
-      token = freshHealth.session_token;
-      res = await fetch(`/api/batches/${batchId}/decisions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify(decision)
-      });
-    }
-  }
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error?.message || `Keputusan ditolak (${res.status}).`);
-  }
-  return await res.json();
-}
+export async function getBatchState(batchId:string):Promise<BatchStateResponse>{return authenticatedRequest(`/api/batches/${batchId}`);}
+export async function submitBatchDecision(batchId:string,decision:{action:'approve_save'|'approve_partial_save'|'back_to_review';snapshot_id:string;partial_acknowledged:boolean;clear_decisions:Record<string,Record<string,'clear'|'keep'|'defer'>>;conflict_decisions?:Record<string,Record<string,'keep'|'incoming'>>}):Promise<{success:boolean;status:string}>{return authenticatedRequest(`/api/batches/${batchId}/decisions`,{method:'POST',body:JSON.stringify(decision)});}

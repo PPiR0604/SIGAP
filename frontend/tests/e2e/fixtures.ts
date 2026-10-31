@@ -3,7 +3,7 @@ import { test as base, expect, type Page } from '@playwright/test';
 export const report = 'Laporan sintetis: Posko Harapan 98 jiwa, laki-laki 45, perempuan 55. Butuh air bersih.';
 export const composer = (page: Page) => page.getByRole('textbox', { name: 'Laporan atau pertanyaan Anda' });
 export const sendButton = (page: Page) => page.getByRole('button', { name: 'Kirim', exact: true });
-export const recapRows = (page: Page) => page.locator('tbody tr');
+export const recapRows = (page: Page) => (page.viewportSize()?.width??1440)<=760?page.locator('.recap-mobile-list > article'):page.getByRole('region',{name:'Tabel rekap posko',exact:true}).locator('tbody tr');
 
 export const test = base.extend<{ app: Page }>({
   app: async ({ page }, use) => {
@@ -15,7 +15,8 @@ export const test = base.extend<{ app: Page }>({
     await page.goto('/');
     await connected;
     await expect(page.getByRole('button', { name: 'Backend Mock', exact: true })).toBeVisible();
-    await expect(page.getByText('Belum ada kandidat rekap', { exact: true })).toBeVisible();
+    await page.getByRole('navigation',{name:'Navigasi utama'}).getByRole('button',{name:'Laporan',exact:true}).click();
+    await expect(composer(page)).toBeVisible();
     await use(page);
     expect(errors, 'Uncaught JavaScript errors').toEqual([]);
   },

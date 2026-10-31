@@ -1,0 +1,174 @@
+{
+  "synthetic": true,
+  "scenario_date": "2026-10-25",
+  "timezone": "Asia/Jakarta",
+  "status": "expected_only_not_user_test_results",
+  "baseline": {
+    "shelters": 8,
+    "total_people": 630
+  },
+  "ordered_steps_all_incoming_approved": [
+    {
+      "task": "T01",
+      "shelters": 8,
+      "total_people": 630
+    },
+    {
+      "task": "T02_before_approval",
+      "shelters": 8,
+      "total_people": 630
+    },
+    {
+      "task": "T02",
+      "shelters": 10,
+      "total_people": 744
+    },
+    {
+      "task": "T03",
+      "shelters": 10,
+      "total_people": 752
+    },
+    {
+      "task": "T04",
+      "shelters": 10,
+      "total_people": 760
+    },
+    {
+      "task": "T05",
+      "shelters": 10,
+      "total_people": 760
+    },
+    {
+      "task": "T06",
+      "shelters": 10,
+      "total_people": 760
+    },
+    {
+      "task": "T07",
+      "shelters": 10,
+      "total_people": 760
+    },
+    {
+      "task": "T08",
+      "shelters": 10,
+      "total_people": 760
+    }
+  ],
+  "T04_alternatives": {
+    "both_keep": 752,
+    "one_incoming": 756,
+    "both_incoming": 760
+  },
+  "new_records": [
+    {
+      "shelter_name": "Posko Anggrek",
+      "village": "Sukajaya",
+      "total_people": 50,
+      "male": 24,
+      "female": 26,
+      "water_stock_24h_l": 300,
+      "water_need_l_per_day": 750,
+      "water_gap_l_per_day": 450
+    },
+    {
+      "shelter_name": "Posko Kenanga",
+      "village": "Cipandan",
+      "total_people": 64,
+      "male": 30,
+      "female": 34,
+      "water_stock_24h_l": 0,
+      "water_need_l_per_day": 960,
+      "water_gap_l_per_day": 960
+    }
+  ],
+  "final_updates": [
+    {
+      "shelter_name": "Posko Harapan",
+      "village": "Sukamaju",
+      "total_people": 102,
+      "male": 47,
+      "female": 55,
+      "elderly": 14,
+      "disability": 2
+    },
+    {
+      "shelter_name": "Posko Cibening",
+      "village": "Cibineng",
+      "total_people": 104,
+      "male": 57,
+      "female": 47,
+      "elderly": 9
+    },
+    {
+      "shelter_name": "Posko Teduh",
+      "village": "Mekarsari",
+      "total_people": 84,
+      "male": 40,
+      "female": 44
+    },
+    {
+      "shelter_name": "Posko Harapan",
+      "village": "Cipandan",
+      "total_people": 44,
+      "male": 21,
+      "female": 23
+    },
+    {
+      "shelter_name": "Posko Melati",
+      "village": "Cisarua",
+      "total_people": 63,
+      "male": 30,
+      "female": 33,
+      "disability": 0,
+      "is_estimate": false,
+      "water_stock_24h_l": 300,
+      "water_need_l_per_day": 945,
+      "water_gap_l_per_day": 645
+    }
+  ],
+  "invalid_report": {
+    "shelter_name": "Posko Uji Konflik",
+    "village": "Uji",
+    "stated_total": 70,
+    "male": 35,
+    "female": 40,
+    "sum_sexes": 75,
+    "must_remain_unsaved": true
+  },
+  "final_totals": {
+    "people": 760,
+    "water_l_per_day": 11400,
+    "food_kcal_per_day": 1596000
+  },
+  "expected_phone_occurrences": {
+    "01-laporan-baru.txt": 4,
+    "02a-koreksi-harapan.txt": 1,
+    "02b-koreksi-cibening.txt": 1,
+    "02c-koreksi-lansia-harapan.txt": 1,
+    "03-impor-konflik.csv": 2,
+    "04a-laporan-parsial.txt": 1,
+    "04b-klarifikasi-melati.txt": 1,
+    "05-laporan-tidak-konsisten.txt": 1
+  },
+  "known_dummy_phone_strings": [
+    "081200000101",
+    "+6281200000102",
+    "0812-0000-0103",
+    "081200000103",
+    "6281200000104",
+    "081200000105",
+    "+6281200000106",
+    "0812.0000.0107",
+    "081200000107",
+    "+6281200000108",
+    "085600000201",
+    "0822-0000-0202"
+  ],
+  "assertions": {
+    "save_requires_explicit_confirmation": true,
+    "no_external_publication": true,
+    "raw_dummy_phones_absent_from_processed_output": true,
+    "nusa_48h_stock_gap_requires_period_confirmation": true,
+    "unapproved_candidates_excluded_from_saved_totals_and_bulletin": true
+  }
+}

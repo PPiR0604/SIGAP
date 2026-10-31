@@ -1,0 +1,46 @@
+# Keep the tested vendor Python, OS libraries and Langflow version intact.
+FROM langflowai/langflow:1.12.6@sha256:a0396e089eb97fa471ef8affc492b8c56abb3758040a5ddaa80814b0abad15bf AS vendor
+USER root
+COPY deploy/partition_image.py /tmp/partition_image.py
+RUN python /tmp/partition_image.py
+
+# The vendor image has a layer over VCR's per-layer limit. Repack its filesystem.
+FROM scratch
+COPY --from=vendor /image-parts/part00/ /
+COPY --from=vendor /image-parts/part01/ /
+COPY --from=vendor /image-parts/part02/ /
+COPY --from=vendor /image-parts/part03/ /
+COPY --from=vendor /image-parts/part04/ /
+COPY --from=vendor /image-parts/part05/ /
+COPY --from=vendor /image-parts/part06/ /
+COPY --from=vendor /image-parts/part07/ /
+COPY --from=vendor /image-parts/part08/ /
+COPY --from=vendor /image-parts/part09/ /
+COPY --from=vendor /image-parts/part10/ /
+COPY --from=vendor /image-parts/part11/ /
+COPY --from=vendor /image-parts/part12/ /
+COPY --from=vendor /image-parts/part13/ /
+COPY --from=vendor /image-parts/part14/ /
+COPY --from=vendor /image-parts/part15/ /
+ENV PATH=/app/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    HOME=/tmp \
+    XDG_CACHE_HOME=/tmp/.cache \
+    LANG=C.UTF-8 \
+    PORT=10000 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    DO_NOT_TRACK=true \
+    SIGAP_DEPLOY_TARGET=vercel \
+    SIGAP_MCP_STATELESS=1 \
+    SIGAP_MCP_STARTUP_TIMEOUT_SECONDS=150
+WORKDIR /app/sigap-mcp
+COPY --chown=1000:1000 components ./components
+COPY --chown=1000:1000 lib ./lib
+COPY --chown=1000:1000 flows/*.json ./flows/
+COPY --chown=1000:1000 scripts/build_supabase_flows.py ./scripts/build_supabase_flows.py
+COPY --chown=1000:1000 deploy ./deploy
+RUN python scripts/build_supabase_flows.py \
+    && python -c "from pathlib import Path; from deploy.runtime import validate_flows; validate_flows(Path('flows/supabase'))"
+USER 1000
+EXPOSE 10000
+ENTRYPOINT ["python", "-m", "deploy.start"]

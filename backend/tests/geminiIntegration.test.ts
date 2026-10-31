@@ -37,10 +37,11 @@ for(const scenario of ['verified','mismatch','failure','changed-write'])test(`Ge
     assert.equal(mcp.requests.filter(r=>r.method==='tools/call'&&r.params.name==='sigap_5_upsert_shelter').length,0);
     const decision=await app.inject({method:'POST',url:`/api/batches/${batchId}/decisions`,headers:auth,payload:{action:'approve_save',snapshot_id:id,partial_acknowledged:false,clear_decisions:{}}});
     assert.equal(decision.statusCode,202);
-    const expected=scenario==='verified'?'done':scenario==='mismatch'?'needs_review':'save_status_unknown';
+    const expected=['verified','changed-write'].includes(scenario)?'done':scenario==='mismatch'?'needs_review':'save_status_unknown';
     await waitFor(repo,batchId,expected);
     const writers=mcp.requests.filter(r=>r.method==='tools/call'&&r.params.name==='sigap_5_upsert_shelter');
-    assert.equal(writers.length,scenario==='changed-write'?0:1);
+    assert.equal(writers.length,1);
+    assert.equal(script.inputs.length,3,'Approved commits do not ask the model to choose or modify tool arguments');
     if(writers.length)assert.deepEqual(JSON.parse(writers[0].params.arguments.input_value),approved);
     const duplicate=await app.inject({method:'POST',url:`/api/batches/${batchId}/decisions`,headers:auth,payload:{action:'approve_save',snapshot_id:id,clear_decisions:{}}});
     assert.equal(duplicate.statusCode,409);
@@ -78,7 +79,10 @@ test('Gemini preserves a Langflow bulletin preview without invalidating the revi
     }
     const batch = repo.getBatch(response.json().batch_id)!;
     assert.equal(batch.status, 'ready_for_review');
-    assert.deepEqual(JSON.parse(batch.bulletin_payload_json!), bulletin);
+    const {source_metadata,...canonicalBulletin}=JSON.parse(batch.bulletin_payload_json!);
+    assert.deepEqual(canonicalBulletin, bulletin);
+    assert.equal(source_metadata.snapshot_id,bulletin.snapshot_id);
+    assert.ok(!Number.isNaN(Date.parse(source_metadata.generated_at)));
     const events = repo.getEventsAfter(session.session_id);
     assert.ok(events.some(event => event.event_type === 'bulletin_ready'));
     assert.ok(events.some(event => event.event_type === 'approval_required'));

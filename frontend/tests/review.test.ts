@@ -18,7 +18,10 @@ test('valid review records a demo decision without claiming storage verification
   assert.equal(result.mode, 'demo');
 });
 test('rejects unsupported and oversized uploads', () => {
-  assert.throws(() => validateReportFile('laporan.pdf',100), /\.txt/);
+  assert.throws(() => validateReportFile('laporan.docx',100), /\.txt/);
   assert.throws(() => validateReportFile('laporan.txt',205000), /200 KiB/);
   assert.doesNotThrow(() => validateReportFile('laporan.TXT',204800));
+  for(const name of ['scan.PDF','foto.jpg','foto.JPEG','scan.PNG'])assert.doesNotThrow(()=>validateReportFile(name,5*1024*1024));
+  assert.throws(()=>validateReportFile('scan.pdf',5*1024*1024+1),/5 MiB/);
+  assert.throws(()=>validateReportFile('scan.pdf',0),/kosong/);
 });

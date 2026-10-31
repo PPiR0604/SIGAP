@@ -17,8 +17,6 @@ test('three follow-up conversations preserve the review candidate and its approv
     call('sigap_1_prepare_needs',{input_value:'Posko Uji 10 jiwa.'}),
     call('sigap_2_validate_needs',{input_value:'{"batch_id":"source","source_sha256":"hash","records":[]}'}),done,
     ...['Ada 10 jiwa dalam kandidat.', 'Silakan periksa sebelum menyetujui.', 'Sama-sama.'].map(text=>({role:'model' as const,parts:[{text}]})),
-    call('sigap_5_upsert_shelter',{input_value:JSON.stringify(write)}),
-    call('sigap_0_fetch_shelters',{input_value:JSON.stringify({action:'all',expected_snapshot_id:id,expected_snapshot_sha256:sha})}),done,
     call('sigap_1_prepare_needs',{input_value:'Posko Uji 11 jiwa.'}),done
   ]);
   const repo = new SigapRepository(':memory:');

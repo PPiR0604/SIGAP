@@ -1,6 +1,6 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
 import {GeminiAgentRuntime} from '../src/gemini/runtime.js';
-import {call,done,scriptedModel,scenarioMcp} from './helpers/geminiScenario.js';
+import {call,done,id,sha,scriptedModel,scenarioMcp} from './helpers/geminiScenario.js';
 const options={sessionId:'one',batchId:'batch',requestId:'request',prompt:'Laporan sintetis',operation:'prepare' as const};
 const settings={apiKey:'synthetic-test-key',model:'gemini-3.8-flash'};
 const allow=async()=>({allow:true});
@@ -78,9 +78,9 @@ test('writer network failure cannot be retried by the model',async()=>{
   const script=scriptedModel([call('sigap_5_upsert_shelter'),call('sigap_5_upsert_shelter')]);const runtime=new GeminiAgentRuntime(settings,script.model);
   try{
     await runtime.initSession({sessionId:'one',contextId:'test',mcpServerConfig:[{name:'langflow',type:'http',url:mcp.url,headers:[]}]});
-    await assert.rejects(runtime.sendPrompt({...options,operation:'commit'},()=>{},allow));
+    await assert.rejects(runtime.sendPrompt({...options,operation:'commit',writePayload:{snapshot_id:id,snapshot_sha256:sha}},()=>{},allow));
     assert.equal(mcp.requests.filter(r=>r.method==='tools/call').length,1);
-    assert.equal(script.inputs.length,1);
+    assert.equal(script.inputs.length,0);
   }finally{await runtime.shutdown();await mcp.close();}
 });
 test('Gemini enforces operation budgets, malformed calls and tool errors',async()=>{

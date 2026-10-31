@@ -4,6 +4,7 @@ import json
 import os
 import re
 import sqlite3
+import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -147,6 +148,8 @@ def write_sqlite(payload, path, match, merge, *, migration=False):
 def compare_stored(records, stored):
     """Attach exact baseline row for optimistic concurrency and human field decisions."""
     if not stored['rows']:
+        for record in records:
+            record['shelter_id'] = record.get('shelter_id') or uuid.uuid4().hex
         return records
     header = stored['header']
     columns = {'total_people':'jumlah_jiwa','male':'laki_laki','female':'perempuan','elderly':'lansia','disability':'disabilitas',
@@ -163,14 +166,27 @@ def compare_stored(records, stored):
             try: key = identity_for(header,probe)
             except ValueError: continue
         matches = [row for row in stored['rows'] if identity_for(header,row,allow_incomplete=True)==key]
+        if not target and not record.get('shelter_id'):
+            norm=lambda value: ' '.join(re.findall(r'\w+',str(value or '').casefold()))
+            def same_location(row):
+                cells=dict(zip(header,row))
+                return norm(cells.get('posko'))==norm(record.get('shelter_name')) and norm(cells.get('desa'))==norm(record.get('village')) and norm(cells.get('disaster_id'))==norm(record.get('disaster_id'))
+            matches=[row for row in stored['rows'] if same_location(row)]
+            if matches: key=identity_for(header,matches[0],allow_incomplete=True)
         if len(matches)>1: raise ValueError('Data tersimpan memiliki identitas posko ambigu.')
         baseline={'identity':key,'row':dict(zip(header,matches[0])) if matches else None}
         if record.get('storage_baseline') and record['storage_baseline']!=baseline:
             raise ValueError('Rekap tersimpan berubah sejak kandidat pertama. Baca ulang sebelum koreksi.')
         record['storage_baseline']=baseline
         record['validation_issues']=[i for i in record.get('validation_issues',[]) if i.get('field')!='storage_conflicts']
-        if not matches: continue
+        if not matches:
+            record['shelter_id']=record.get('shelter_id') or uuid.uuid4().hex
+            continue
         cells = dict(zip(header,matches[0]))
+        # Preserve an existing ID; allocate legacy IDs only on an explicitly bound correction.
+        # Untargeted legacy updates keep their original location identity until reviewed.
+        if cells.get('shelter_id'):record['shelter_id']=cells['shelter_id']
+        elif target:record['shelter_id']=record.get('shelter_id') or uuid.uuid4().hex
         old = {field:cells.get(column) for field,column in columns.items()}
         for field in list(columns)[:10]:
             value=old.get(field)

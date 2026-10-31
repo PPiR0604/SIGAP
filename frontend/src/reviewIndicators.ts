@@ -49,6 +49,7 @@ export function reviewIndicators(record:Record<string,any>):ReviewItem[]{
 }
 
 export function reviewSummary(items:ReviewItem[]=[]):string{
-  const priority={clarification:0,decision:1,missing:2,stock:3};
-  return [...items].sort((a,b)=>priority[a.kind]-priority[b.kind]).slice(0,2).map(i=>i.kind==='missing'?`${reviewFieldLabel(i.field)} belum dilaporkan`:i.text).join(' · ');
+  const counts={clarification:0,decision:0,missing:0,stock:0};
+  for(const item of items)counts[item.kind]++;
+  return [counts.clarification?'Perlu klarifikasi':'',counts.decision?'Perlu keputusan':'',counts.missing?`${counts.missing} data belum dilaporkan`:'',counts.stock?`${counts.stock} catatan stok`:''].filter(Boolean).join(' · ');
 }

@@ -1,21 +1,23 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { createHash } from 'node:crypto';
-import type { SigapRepository } from '../db/repo.js';
+import type { Repository } from '../db/contract.js';
 import type { BatchOrchestrator } from '../pipeline/orchestrator.js';
 import { validateReportInput } from '../pipeline/inputValidation.js';
 import { filterPii } from '../pipeline/pii.js';
 import {csvReports} from '../pipeline/csvImport.js';
 import type { AppConfig } from '../config.js';
+import {StructuredCorrectionSchema,structuredCorrection} from '../pipeline/structuredCorrection.js';
 
 const MessageBodySchema = z.object({
   request_id: z.string().min(1, 'request_id wajib diisi.'),
   text: z.string(),
   filename: z.string().optional()
+  ,correction:StructuredCorrectionSchema.optional()
 });
 
 export function createMessagesRoute(
-  repo: SigapRepository,
+  repo: Repository,
   orchestrator: BatchOrchestrator,
   config: AppConfig
 ): FastifyPluginAsync {
@@ -24,7 +26,7 @@ export function createMessagesRoute(
       const { id: sessionId } = request.params as { id: string };
 
       // 1. Session exists?
-      const session = repo.getSession(sessionId);
+      const session = (await repo.getSession(sessionId));
       if (!session) {
         return reply.code(404).send({
           error: {
@@ -40,14 +42,17 @@ export function createMessagesRoute(
         return reply.code(422).send({
           error: {
             code: 'INVALID_REQUEST_BODY',
-            message: parseResult.error.errors[0]?.message || 'Body permintaan tidak valid.'
+            message: parseResult.error.issues[0]?.message || 'Body permintaan tidak valid.'
           }
         });
       }
-      const { request_id: requestId, text, filename } = parseResult.data;
+      const { request_id: requestId, filename, correction } = parseResult.data;
+      const structured=correction?structuredCorrection(correction):undefined;
+      const text=structured?.text??parseResult.data.text;
+      if(correction&&filename)return reply.code(422).send({error:{code:'INVALID_CORRECTION'}});
 
       // 3. Idempotency check: same request_id?
-      const existingBatch = repo.getBatchByRequestId(requestId, sessionId);
+      const existingBatch = (await repo.getBatchByRequestId(requestId, sessionId));
       if (existingBatch) {
         return reply.code(200).send({
           batch_id: existingBatch.batch_id,
@@ -58,7 +63,7 @@ export function createMessagesRoute(
       }
 
       // 4. Concurrency check: is there another active batch on this session?
-      const activeBatch = repo.getActiveBatch(sessionId);
+      const activeBatch = (await repo.getActiveBatch(sessionId));
       if (activeBatch || orchestrator.isProcessing(sessionId)) {
         return reply.code(409).send({
           error: {
@@ -80,7 +85,7 @@ export function createMessagesRoute(
       }
 
       // Pesan pertama pada sesi: agen diminta membaca rekap tersimpan lebih dulu.
-      const firstTurn = repo.countBatches(sessionId) === 0;
+      const firstTurn = (await repo.countBatches(sessionId)) === 0;
 
       // 6. PII filtering
       const csv=filename?.toLowerCase().endsWith('.csv');
@@ -90,7 +95,7 @@ export function createMessagesRoute(
       const { filteredText, piiSummary } = filterPii(source);
 
       // 7. Create batch in DB
-      const batch = repo.createBatch({
+      const batch = (await repo.createBatch({
         sessionId,
         requestId,
         contextId: session.context_id,
@@ -98,12 +103,13 @@ export function createMessagesRoute(
         sourceLength: inputVal.byteLength,
         filteredText,
         piiSummary
-      });
+      }));
 
-      repo.touchSession(sessionId);
+      (await repo.touchSession(sessionId));
 
       // 8. Fire async processing in background (do not block response)
-      setImmediate(() => {
+      if(request.principal)orchestrator.setPrincipal(sessionId,request.principal);
+      orchestrator.schedule(() =>
         orchestrator.processBatchMessage({
           sessionId,
           batchId: batch.batch_id,
@@ -113,10 +119,9 @@ export function createMessagesRoute(
           firstTurn,
           sourceFormat:csv?'csv':undefined,
           expectedReportCount
-        }).catch((err) => {
-          // Handled inside orchestrator
-        });
-      });
+          ,structuredRecord:structured?JSON.parse(filterPii(JSON.stringify(structured.record)).filteredText):undefined,correctionBaseKey:correction?.base_key
+        })
+      );
 
       return reply.code(202).send({
         batch_id: batch.batch_id,

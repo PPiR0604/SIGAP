@@ -24,9 +24,11 @@ test('MCP pagination correlates JSON/SSE responses and finishes an open SSE resp
   finally{await client.close();await fixture.close();}
 });
 test('writer timeout is not retried and does not expose credentials',async()=>{
-  const fixture=await mcpServer((message,res)=>{if(message.method==='tools/call')return;res.setHeader('content-type','application/json');res.end(JSON.stringify({id:message.id,result:{protocolVersion:'2025-03-26'}}));});
-  const client=new McpHttpClient({url:fixture.url,headers:{'x-api-key':'private-key'},timeoutMs:50});
-  try{await assert.rejects(client.callTool('sigap_5_upsert_shelter',{}),error=>!String(error).includes('private-key'));assert.equal(fixture.requests.filter(r=>r.method==='tools/call').length,1);}
+  const deadline=new AbortController();
+  // Start the synthetic deadline after dispatch, so CPU contention cannot turn this into an unsent request.
+  const fixture=await mcpServer((message,res)=>{if(message.method==='tools/call'){setTimeout(()=>deadline.abort(),20);return;}res.setHeader('content-type','application/json');res.end(JSON.stringify({id:message.id,result:{protocolVersion:'2025-03-26'}}));});
+  const client=new McpHttpClient({url:fixture.url,headers:{'x-api-key':'private-key'},timeoutMs:5000});
+  try{await assert.rejects(client.callTool('sigap_5_upsert_shelter',{},deadline.signal),error=>!String(error).includes('private-key'));assert.equal(fixture.requests.filter(r=>r.method==='tools/call').length,1);}
   finally{await client.close();await fixture.close();}
 });
 test('MCP rejects remote URLs, redirects, invalid responses and oversized bodies',async()=>{

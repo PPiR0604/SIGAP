@@ -31,7 +31,7 @@ except ImportError:
     sys.modules['httpx']=types.SimpleNamespace(HTTPError=RuntimeError)
 
 from sigap_sqlite import read_sqlite,write_sqlite,compare_stored,resolve_storage_conflicts,connect_storage,identity_for
-from sigap_contracts import save_snapshot,load_snapshot,matches_update_target,verify_readback
+from sigap_contracts import save_snapshot,save_candidate_snapshot,load_snapshot,matches_update_target,verify_readback
 from migrate_csv_sqlite import migrate
 from logistics_storage_writer import LogisticsStorageWriter,merge_update,is_row_match,parse_rows_json
 from logistics_storage_reader import LogisticsStorageReader,build_records
@@ -41,6 +41,55 @@ from shelter_report_validator import ShelterReportValidator,merge_correction
 
 
 class StorageTests(unittest.TestCase):
+    def test_native_row_snapshots_preserve_decimal_stock_and_independent_approval_references(self):
+        records=[{'report_id':'R001','shelter_name':'A','stock':{'air_liter_per_hari':300.0}}, {'report_id':'R002','shelter_name':'B','stock':{}}]
+        parent=load_snapshot(save_candidate_snapshot({'records':records,'report_records':records,'issues':[]}))
+        refs=parent['row_snapshot_refs']
+        self.assertEqual(len(refs),2)
+        self.assertNotEqual(refs[0]['snapshot_id'],refs[1]['snapshot_id'])
+        self.assertEqual(load_snapshot(refs[0])['records'],records[:1])
+        self.assertEqual(load_snapshot(refs[1])['records'],records[1:])
+
+    def test_structured_form_validates_without_llm_and_allocates_stable_id_only_on_bound_target(self):
+        from prepare_user_testing import baseline,storage_payload
+        fixture=storage_payload(baseline('2026-10-25'))
+        write_sqlite(fixture,self.path,lambda *_:False,lambda *_:None,migration=True)
+        records=build_records(fixture['header'],fixture['rows'])
+        reference=save_snapshot({'records':records,'snapshot_kind':'storage_readback'})
+        target={**reference,'record_index':1}
+        source=PoskoReportPreprocessor(raw_text=json.dumps({'report_text':'Mohon klarifikasi laporan R002 (Posko Harapan): lansia: 14. disabilitas: 0.','correction_target':target})).build_clean_reports().text
+        extraction={'records':[{'report_id':'R001','shelter_name':'Posko Harapan','elderly':14,'disability':0}]}
+        result=ShelterReportValidator(llm_output=json.dumps(extraction),source_text=source).build_validated().text
+        self.assertNotIn('GAGAL:',result)
+        parsed=json.loads(result.split('```json\n')[-1].split('\n```')[0])
+        rec=parsed['snapshot_records'][0]
+        self.assertEqual(rec['total_people'],98)
+        self.assertEqual(rec['elderly'],14)
+        self.assertEqual(rec['disability'],0)
+        self.assertTrue(rec['shelter_id'])
+        self.assertEqual(rec['update_target']['report_id'],'R002')
+        self.assertEqual(read_sqlite(self.path)['rows'],fixture['rows'])
+
+    def test_extended_form_keeps_stock_evidence_and_clear_proposals_until_approval(self):
+        from prepare_user_testing import baseline,storage_payload
+        fixture=storage_payload(baseline('2026-10-25'))
+        write_sqlite(fixture,self.path,lambda *_:False,lambda *_:None,migration=True)
+        records=build_records(fixture['header'],fixture['rows'])
+        reference=save_snapshot({'records':records,'snapshot_kind':'storage_readback'})
+        target={**reference,'record_index':1}
+        text='Mohon klarifikasi laporan R002 (Posko Harapan): jumlah KK: 20. bayi/balita: 0. anak: 8. ibu hamil: 1. ibu menyusui: 0. waktu laporan: 2026-10-29 08:15. stok air: 0 L untuk 48 jam dicatat 29/10/2026 08:15. Usulkan pengosongan field: disability.'
+        source=PoskoReportPreprocessor(raw_text=json.dumps({'report_text':text,'correction_target':target})).build_clean_reports().text
+        extraction={'records':[{'report_id':'R001','shelter_name':'Posko Harapan','total_families':20,'infants_toddlers':0,'children':8,'pregnant':1,'breastfeeding':0,'reported_at':'2026-10-29 08:15','stock':{'air_liter_per_hari':0},'stock_context':{'air_liter_per_hari':{'unit':'L','recorded_at':'2026-10-29 08:15','horizon_hours':48}}}]}
+        result=ShelterReportValidator(llm_output=json.dumps(extraction),source_text=source).build_validated().text
+        self.assertNotIn('GAGAL:',result)
+        rec=json.loads(result.split('```json\n')[-1].split('\n```')[0])['snapshot_records'][0]
+        self.assertEqual(rec['total_families'],20)
+        self.assertEqual(rec['infants_toddlers'],0)
+        self.assertEqual(rec['stock']['air_liter_per_hari'],0)
+        self.assertEqual(rec['stock_context']['air_liter_per_hari']['horizon_hours'],48)
+        self.assertIn('disability',rec['pending_clear_fields'])
+        self.assertEqual(read_sqlite(self.path)['rows'],fixture['rows'])
+
     def setUp(self):
         directory=ROOT.parent/'output'/'testing'
         directory.mkdir(parents=True,exist_ok=True)

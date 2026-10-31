@@ -8,11 +8,19 @@ from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'langflow/scripts'))
-from prepare_user_testing import baseline,expected_results,generate_pack,seed_database
+from prepare_user_testing import baseline,expected_results,generate_pack,seed_database,storage_payload
 from sigap_sqlite import read_sqlite
 
 
 class UserTestingTests(unittest.TestCase):
+    def test_registration_seed_matches_participant_baseline(self):
+        fixture=json.loads((ROOT/'data/synthetic/user-validation/baseline.json').read_text(encoding='utf-8'))
+        sql=(ROOT/'backend/supabase/test-registration.sql').read_text(encoding='utf-8')
+        payload=json.loads(sql.split('$fixture$',2)[1])
+        self.assertTrue(fixture['synthetic'])
+        self.assertEqual(payload,storage_payload(fixture))
+        self.assertEqual(sum(r['total_people'] for r in fixture['records']),630)
+
     def test_fixture_identity_totals_and_unknown_vs_zero(self):
         fixture=baseline('2026-10-25');rows=fixture['records'];expected=expected_results(fixture)
         self.assertEqual(len(rows),8)

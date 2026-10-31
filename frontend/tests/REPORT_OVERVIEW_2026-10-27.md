@@ -1,0 +1,15 @@
+# Ringkasan posko di tab Laporan
+
+Ringkasan menempati panel tersendiri paling kiri di tab Laporan. Tombol **Tampilkan diagram** membuka tiga kolom pada desktop: ringkasan, percakapan, dan pratinjau. **Sembunyikan diagram** atau **Ciutkan panel diagram** mengembalikan layout dua kolom dan ruangnya langsung dipakai panel utama. Di layar kurang dari 1100 px, panel terbuka tersusun vertikal agar tidak memaksa kolom sempit atau menyebabkan scroll horizontal.
+
+Panel menampilkan jumlah seluruh posko dalam rekap sesi dan jumlah jiwa yang diketahui. Diagram batang membandingkan empat status pemeriksaan dan enam kategori kebutuhan dengan skala jumlah posko yang sama. Kontrol memiliki `aria-expanded` dan `aria-controls`; menutup dari dalam panel mengembalikan fokus keyboard ke tombol pembuka.
+
+Penyempurnaan lebar chat: halaman Laporan dapat memakai lebar hingga 1600 px. Panel diagram dibatasi 220–260 px, percakapan mendapat proporsi ruang terbesar dengan minimum 480 px pada layout desktop tiga kolom, dan pratinjau mendapat ruang sisanya. Saat diagram ditutup, percakapan tetap lebih lebar daripada pratinjau. Layar di bawah 1100 px memakai susunan vertikal. Pengujian geometri pada 1100, 1280, 1440 dan 1920 px memastikan kolom chat paling lebar dan textarea sedikitnya 400 px, tanpa overflow halaman. Suite terkait chat/Markdown, panel, dan UX halaman: **22/22 lulus**.
+
+Ringkasan memakai seluruh `activeRows`, termasuk perubahan belum disimpan yang diberi label. Pemilihan satu posko di pratinjau tidak mempersempit diagram global. Pembaruan SSE mempertahankan teks input dan keadaan buka/tutup. **Lihat rekap lengkap** membawa pengguna ke Rekap dengan fokus judul, tanpa mengirim atau menyimpan laporan.
+
+Data kosong memiliki petunjuk membaca rekap tersimpan atau mengirim laporan. Jumlah jiwa tidak diketahui dibedakan dari nol; jika sebagian populasi kosong, total diberi penjelasan belum lengkap. Satu posko dihitung sekali per kategori, meskipun memiliki beberapa permintaan yang cocok dengan kategori sama. Tampilan awal diciutkan agar percakapan dan input tetap ringkas.
+
+Tes eksplisit: `e2e/reportOverview.spec.ts` mencakup geometri tiga kolom dengan diagram paling kiri, dua kolom setelah ditutup, lebar percakapan yang kembali membesar, fokus keyboard, buka/tutup, draf input, pembaruan data, pemilihan posko, perubahan belum disimpan, navigasi, populasi kosong/nol, duplikasi kategori dan viewport 320 px. Tes memakai backend in-memory dan SSE terkontrol pada port 5183/8797; tidak mengubah data operasional.
+
+Verifikasi layout awal: **30/30** tes desktop/mobile lulus tanpa retry (8 skenario panel dan 22 regresi diagram/UX). Setelah penyempurnaan lebar chat, **22/22** tes terkait lulus. Build TypeScript/Vite serta Docker frontend berhasil; container frontend telah diperbarui. HTTP 200 dan stylesheet `/assets/index-DF6oUdOQ.css` memuat proporsi chat terbaru. Peninjauan screenshot desktop memastikan tiga panel berurutan dari kiri ke kanan dan chat mendapat ruang paling besar. Backend, role dan workflow Langflow tidak diubah.

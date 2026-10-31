@@ -1,3 +1,4 @@
+import {validateMcpUrl} from './urlPolicy.js';
 export interface McpTool {name:string; description?:string; inputSchema:Record<string,unknown>}
 export interface McpToolResult {content:Array<{type:string;text?:string}>;isError?:boolean;structuredContent?:unknown}
 export interface McpHttpSettings {url:string;headers:Record<string,string>;timeoutMs?:number}
@@ -9,8 +10,7 @@ export class McpHttpClient {
   private lifetime=new AbortController();
   private url:URL;
   constructor(private settings:McpHttpSettings){
-    this.url=new URL(settings.url);
-    if(!['http:','https:'].includes(this.url.protocol)||!['localhost','127.0.0.1','[::1]','host.docker.internal'].includes(this.url.hostname)||this.url.username||this.url.password)throw new Error('MCP URL harus loopback HTTP.');
+    this.url=validateMcpUrl(settings.url);
   }
   async initialize(signal?:AbortSignal):Promise<void>{
     const result=await this.request('initialize',{protocolVersion:'2025-03-26',capabilities:{},clientInfo:{name:'sigap-backend',version:'0.1.0'}},signal);
@@ -45,7 +45,7 @@ export class McpHttpClient {
     const id=++this.id;
     const headers={...this.settings.headers,'Content-Type':'application/json',Accept:'application/json, text/event-stream',
       ...(this.session?{'Mcp-Session-Id':this.session}:{}),...(this.protocol?{'MCP-Protocol-Version':this.protocol}:{})};
-    const combined=AbortSignal.any([this.lifetime.signal,AbortSignal.timeout(this.settings.timeoutMs??120000),...(signal?[signal]:[])]);
+    const combined=AbortSignal.any([this.lifetime.signal,AbortSignal.timeout(this.settings.timeoutMs??(this.url.protocol==='https:'?280000:120000)),...(signal?[signal]:[])]);
     try{
       const response=await fetch(this.url,{method:'POST',redirect:'error',headers,signal:combined,body:JSON.stringify({jsonrpc:'2.0',...(!notification?{id}:{}),method,params})});
       if(!response.ok){await response.body?.cancel();throw new Error(`MCP ${method}: HTTP ${response.status}.`);}
