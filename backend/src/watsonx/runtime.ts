@@ -8,7 +8,7 @@ export function loadWatsonxSettings():WatsonxSettings {
   const baseUrl=(process.env.SIGAP_WATSONX_URL || 'https://us-south.ml.cloud.ibm.com').trim().replace(/\/+$/, '');
   const projectId=(process.env.SIGAP_WATSONX_PROJECT_ID || '').trim();
   const apiKey=(process.env.SIGAP_WATSONX_API_KEY || '').trim();
-  const model=(process.env.SIGAP_WATSONX_MODEL || 'ibm/granite-4-h-small').trim();
+  const model=(process.env.SIGAP_WATSONX_MODEL || 'openai/gpt-oss-120b').trim();
   let url:URL;
   try { url=new URL(baseUrl); } catch { throw new Error('URL watsonx tidak valid.'); }
   if(url.protocol!=='https:' || !/^[a-z0-9-]+\.ml\.cloud\.ibm\.com$/.test(url.hostname) || url.port || url.username || url.password || url.pathname!=='/' || url.search || url.hash) throw new Error('URL watsonx harus endpoint IBM Cloud HTTPS.');

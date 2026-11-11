@@ -5,7 +5,7 @@ Paket ini menjalankan web, backend, Langflow, serta komponen Supabase yang dibut
 ## Persiapan
 
 1. Pasang dan jalankan Docker Desktop (atau Docker Engine dan Compose di Linux). Sediakan ruang penyimpanan dan memori yang cukup untuk beberapa container. Unduhan pertama dan build memerlukan koneksi internet dan dapat memakan waktu.
-2. Siapkan API key, project ID, dan URL regional watsonx.ai milik pengguna demo. Project harus memiliki akses ke model `ibm/granite-4-h-small`.
+2. Siapkan API key, project ID, dan URL regional watsonx.ai milik pengguna demo. Project harus memiliki akses ke model `openai/gpt-oss-120b`. ID tersebut mengikuti [daftar model IBM](https://www.ibm.com/docs/en/watsonxdata/saas?topic=services-supported-foundation-models); periksa ketersediaan pada region dan project yang dipakai.
 3. Buka terminal pada folder proyek.
 
 Di Windows PowerShell:

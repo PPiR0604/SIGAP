@@ -160,7 +160,7 @@ services:
       SIGAP_WATSONX_URL: ${SIGAP_WATSONX_URL:?Run local setup first}
       SIGAP_WATSONX_PROJECT_ID: ${SIGAP_WATSONX_PROJECT_ID:?Run local setup first}
       SIGAP_WATSONX_API_KEY: ${SIGAP_WATSONX_API_KEY:?Run local setup first}
-      SIGAP_WATSONX_MODEL: ${SIGAP_WATSONX_MODEL:-ibm/granite-4-h-small}
+      SIGAP_WATSONX_MODEL: ${SIGAP_WATSONX_MODEL:-openai/gpt-oss-120b}
       SIGAP_SUPABASE_URL: http://api-gw:8000
       SIGAP_SUPABASE_PUBLISHABLE_KEY: ${LOCAL_ANON_KEY:?Run local setup first}
       SIGAP_SUPABASE_GATEWAY_SECRET: ${SIGAP_SUPABASE_GATEWAY_SECRET:?Run local setup first}

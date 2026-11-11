@@ -46,7 +46,7 @@ const config={
  SIGAP_SUPABASE_GATEWAY_SECRET:random(),SIGAP_ORGANIZATION_ID:organization,
  LANGFLOW_API_KEY:random(),LANGFLOW_SECRET_KEY:random(),LANGFLOW_SUPERUSER_PASSWORD:random(),
  LOCAL_ADMIN_PASSWORD:randomBytes(18).toString('base64url'),LOCAL_OFFICER_PASSWORD:randomBytes(18).toString('base64url'),LOCAL_VIEWER_PASSWORD:randomBytes(18).toString('base64url'),
- SIGAP_WATSONX_URL:parsed.origin,SIGAP_WATSONX_PROJECT_ID:projectId,SIGAP_WATSONX_API_KEY:apiKey,SIGAP_WATSONX_MODEL:'ibm/granite-4-h-small',
+ SIGAP_WATSONX_URL:parsed.origin,SIGAP_WATSONX_PROJECT_ID:projectId,SIGAP_WATSONX_API_KEY:apiKey,SIGAP_WATSONX_MODEL:'openai/gpt-oss-120b',
 };
 // Docker env-file interpolation must not expand characters from credentials.
 const escape=value=>"'"+String(value)+"'";
