@@ -1,4 +1,7 @@
+import {StatusBadge} from './ui/StatusBadge';
+import {ActionButton} from './ui/ActionButton';
 import {useEffect,useRef,useState,type ReactNode,type RefObject} from 'react';
+import {PillTab,PillTabList} from '@/components/base/tabs/pill-tab';
 import {ArrowLeft,ArrowRight} from 'lucide-react';
 import type {Shelter} from './demo';
 import {qualityLabel} from './presentation';
@@ -26,13 +29,13 @@ export function ClarificationPage({shelter,storageLabel,busy,canCalculate,onCalc
  useEffect(()=>{headingRef.current?.focus({preventScroll:true});},[headingRef]);
  return <section ref={root} className="clarification-page" aria-label="Halaman klarifikasi posko">
   <header className="clarification-page-heading">
-   <div><button type="button" className="button quiet clarification-back" onClick={onBack}><ArrowLeft size={17} aria-hidden="true"/>Kembali</button><div className="field-label-row"><h1 ref={headingRef} tabIndex={-1}>{shelter.name}</h1><HelpTip source label="Sumber laporan"><blockquote>{shelter.source}</blockquote><small>{shelter.time}</small></HelpTip></div><p className="detail-meta">{shelter.village} · {shelter.time}</p></div>
-   <div className="clarification-page-state"><span className="badge neutral">{qualityLabel(shelter)}</span><span className="storage-state">{storageLabel}</span>{onNext&&<button type="button" className="button secondary" disabled={busy} onClick={onNext}>Posko berikutnya<ArrowRight size={16} aria-hidden="true"/></button>}</div>
+   <div><ActionButton type="button" className="button quiet clarification-back" onClick={onBack}><ArrowLeft size={17} aria-hidden="true"/>Kembali</ActionButton><div className="field-label-row"><h1 ref={headingRef} tabIndex={-1}>{shelter.name}</h1><HelpTip source label="Sumber laporan"><blockquote>{shelter.source}</blockquote><small>{shelter.time}</small></HelpTip></div><p className="detail-meta">{shelter.village} · {shelter.time}</p></div>
+   <div className="clarification-page-state"><StatusBadge className="badge neutral">{qualityLabel(shelter)}</StatusBadge><span className="storage-state">{storageLabel}</span>{onNext&&<ActionButton type="button" className="button secondary" disabled={busy} onClick={onNext}>Posko berikutnya<ArrowRight size={16} aria-hidden="true"/></ActionButton>}</div>
   </header>
   <div className="clarification-page-grid">
    <aside ref={reference} className={`card clarification-reference${sticky?' is-sticky':''}`} aria-label="Data pembanding posko">
-    <div className="clarification-section-tabs" role="group" aria-label="Bagian data pembanding">{['Pemeriksaan','Data posko','Perhitungan'].map(name=><button type="button" key={name} aria-pressed={tab===name} onClick={()=>setTab(name)}>{name}</button>)}</div>
-    <div hidden={tab!=='Pemeriksaan'}><ShelterNotice shelter={shelter}/><ReviewChecklist items={shelter.reviewItems} onResolve={onFocusField}/>{!shelter.reviewItems?.length&&<p className="note">Tidak ada catatan pemeriksaan pada data ini.</p>}{onApprove&&<div className="clarification-save"><p>Perubahan belum disimpan.</p><button type="button" className="button primary" disabled={busy} onClick={onApprove}>Tinjau &amp; simpan perubahan</button></div>}</div>
+    <PillTabList className="sigap-pill-tabs" aria-label="Bagian data pembanding">{['Pemeriksaan','Data posko','Perhitungan'].map(name=><PillTab variant="gray" key={name} isSelected={tab===name} onSelect={()=>setTab(name)}>{name}</PillTab>)}</PillTabList>
+    <div hidden={tab!=='Pemeriksaan'}><ShelterNotice shelter={shelter}/><ReviewChecklist items={shelter.reviewItems} onResolve={onFocusField}/>{!shelter.reviewItems?.length&&<p className="note">Tidak ada catatan pemeriksaan pada data ini.</p>}{onApprove&&<div className="clarification-save"><p>Perubahan belum disimpan.</p><ActionButton type="button" className="button primary" disabled={busy} onClick={onApprove}>Tinjau &amp; simpan perubahan</ActionButton></div>}</div>
     <div hidden={tab!=='Data posko'}><PopulationDetails shelter={shelter}/><h3>Kebutuhan yang dilaporkan</h3><p>{shelter.needs.join(', ')||'Belum dilaporkan'}</p></div>
     <section hidden={tab!=='Perhitungan'} aria-label="Hasil perhitungan kebutuhan"><SphereNeedsDetails shelter={shelter} onCalculate={onCalculate} canCalculate={canCalculate} busy={busy} onClarify={()=>onFocusField('children')}/></section>
    </aside>

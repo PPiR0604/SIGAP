@@ -1,3 +1,5 @@
+import {StatusBadge} from './ui/StatusBadge';
+import {ActionButton} from './ui/ActionButton';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { ArrowDownToLine, Check, ChevronRight, Copy, FileText, Info, Plus, Search, ShieldCheck, TriangleAlert, X, Home, Users, Droplets, RotateCw, AlertCircle } from 'lucide-react';
 import { shelters, sampleReport, bulletin, type Shelter, type RequirementKey } from './demo';
@@ -24,6 +26,7 @@ import { bulletinForReading, hasBulletinContent } from './bulletin';
 import { reviewSummary } from './reviewIndicators';
 import { ClarificationForm, clarificationApplied, type ClarificationFeedback, type ClarificationChanges } from './ClarificationForm';
 import { ConflictReview, storageConflicts, type ConflictChoices } from './ConflictReview';
+import {bindDelivery,getReport,acknowledgeDelivery,cacheShelters,addReport,type QueuedReport} from './offlineQueue';
 import { stageLabel, isReportStage, isReadOnlyStage } from './stageLabels';
 
 import { metricValue, metrics, recapCsv } from './needs';
@@ -33,7 +36,7 @@ import { NeedSummaryCard, PrioritySheltersCard } from './NeedSummary';
 type View = 'Posko' | 'Kebutuhan';
 const number = (value: number | null) => value === null ? 'Belum diketahui' : new Intl.NumberFormat('id-ID').format(value);
 const steps = ['Input', 'Proses', 'Tinjau', 'Simpan'];
-function Badge({ status }: { status: string }) { const tone = ['Perlu klarifikasi', 'Menunggu persetujuan'].includes(status) ? 'warning' : ['Parsial', 'Data belum lengkap', 'Belum tersedia', 'Memperbarui…', 'Dari penyimpanan'].includes(status) ? 'neutral' : 'success'; return <span className={`badge ${tone}`}><span />{status}</span> }
+function Badge({ status }: { status: string }) { const tone = ['Perlu klarifikasi', 'Menunggu persetujuan'].includes(status) ? 'warning' : ['Parsial', 'Data belum lengkap', 'Belum tersedia', 'Memperbarui…', 'Dari penyimpanan'].includes(status) ? 'neutral' : 'success'; return <StatusBadge className={`badge ${tone}`}><span />{status}</StatusBadge> }
 
 export default function App({ contextId = 'posko-sumedang', operator = 'Operator', onLogout, preferenceKey = 'local', role = 'petugas' }: { contextId?: string; operator?: string; onLogout?: () => void; preferenceKey?: string; role?: 'admin' | 'petugas' } = {}) {
   const [page, setPage, detailKey, backFromClarification] = useWorkspaceNavigation();
@@ -48,6 +51,9 @@ export default function App({ contextId = 'posko-sumedang', operator = 'Operator
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('Semua status');
   const [input, setInput] = useState('');
+  const queuedSelection=useRef<QueuedReport|null>(null);
+  const [browserOnline,setBrowserOnline]=useState(navigator.onLine);
+  useEffect(()=>{const update=()=>setBrowserOnline(navigator.onLine);window.addEventListener('online',update);window.addEventListener('offline',update);return()=>{window.removeEventListener('online',update);window.removeEventListener('offline',update);};},[]);
   const [filename, setFilename] = useState<string | undefined>();
   const [documentBusy, setDocumentBusy] = useState(false);
   const [originalDocument, setOriginalDocument] = useState<File | null>(null);
@@ -187,6 +193,8 @@ export default function App({ contextId = 'posko-sumedang', operator = 'Operator
       },
       assistant_message: data => { if (data.chunk || data.text) setMessages(m => [...m, { role: 'assistant', text: data.chunk || data.text }]); },
       preview_ready: data => {
+        const repeated=pendingReviewRef.current.find(r=>r.batchId===(data.batch_id||latestBatch.current));
+        if(data.snapshot_id&&repeated?.preview.snapshot_id===data.snapshot_id)return;
         setActivity('report');
         workspaceRevision.current++;
         previewRevision.current++;
@@ -195,6 +203,7 @@ export default function App({ contextId = 'posko-sumedang', operator = 'Operator
         pendingReviewRef.current = receiveReview(pendingReviewRef.current, review);
         setPendingReviews(pendingReviewRef.current);
         activateReview(review);
+        if(storageConflicts(data).length)setNotice('Ada konflik dengan rekap tersimpan. Buka halaman Konflik untuk memeriksa nilai sebelum menyetujui.');
         const candidateRows = previewRows(data);
         const merged = pendingRows(storedBase.current, pendingReviewRef.current, rowsRef.current);
         setActiveRows(merged);
@@ -254,7 +263,20 @@ export default function App({ contextId = 'posko-sumedang', operator = 'Operator
         if (data.automatic_recalculation && attempt?.received && attempt.batchId === data.batch_id) setClarificationFeedback(previous => previous?.kind !== 'error' ? { kind: 'success', text: 'Kandidat baru diterima. Kebutuhan sudah dihitung ulang; perubahan belum disimpan.' } : previous);
       },
       bulletin_ready: data => { if (data.content) { setActiveBulletin(data.content); setBulletinBatchId(data.batch_id || ''); bulletinSource.receive(data, rowsRef.current); } },
-      error: data => { markSaveUnverified(data.batch_id); completionRevision.current++; setProcessing(false); const message = data.message || 'Proses belum dapat diverifikasi.'; setOperationError(message); failClarification(message, data.batch_id); }
+      error: data => {
+        if(data.code==='ROW_PREPARATION_FAILED'&&data.batch_id){
+          const failed=pendingReviewRef.current.find(review=>review.batchId===data.batch_id);
+          workspaceRevision.current++;
+          pendingReviewRef.current=pendingReviewRef.current.filter(review=>review.batchId!==data.batch_id);
+          setPendingReviews(pendingReviewRef.current);
+          const rows=pendingRows(storedBase.current,pendingReviewRef.current,rowsRef.current);
+          setActiveRows(rows);setStoredLoaded(!pendingReviewRef.current.length&&storedBase.current.length>0);
+          if(failed)setDetail(current=>current&&reviewForShelter([failed],current)?rows.find(row=>matchesClarificationTarget(row,current))||null:current);
+          if(candidateRef.current===data.batch_id){activateReview(pendingReviewRef.current.at(-1)||null);setModal(null);}
+        }
+        markSaveUnverified(data.batch_id);completionRevision.current++;setProcessing(false);
+        const message=data.message||'Proses belum dapat diverifikasi.';setOperationError(message);failClarification(message,data.batch_id);
+      }
     }), err => { markSaveUnverified(); completionRevision.current++; setProcessing(false); setOperationError(err.message + ' Periksa hasil proses sebelum mengirim ulang.'); failClarification(err.message); }, recoveryCursor.current);
     return () => stream.close();
   }, [sessionId]);
@@ -338,7 +360,7 @@ export default function App({ contextId = 'posko-sumedang', operator = 'Operator
     { label: 'Posko mana yang butuh air?', text: 'Posko mana saja yang paling butuh air bersih saat ini?' }
   ];
   const statusTone = !health ? 'demo' : health.mode === 'live' ? 'online' : 'warn';
-  const statusLabel = health ? (health.mode === 'mock_mode' ? 'Backend Mock' : ['gemini', 'openai'].includes(health.agent || '') ? (health.mode === 'live' ? 'LLM dikonfigurasi' : 'LLM belum siap') : health.mode === 'live' ? 'Agent tersedia' : 'Koneksi bermasalah') : 'Mode demo';
+  const statusLabel = health ? (health.mode === 'mock_mode' ? 'Backend Mock' : ['gemini', 'openai', 'watsonx'].includes(health.agent || '') ? (health.mode === 'live' ? 'LLM dikonfigurasi' : 'LLM belum siap') : health.mode === 'live' ? 'Agent tersedia' : 'Koneksi bermasalah') : 'Mode demo';
   function goReview() { setView('Posko'); setFilter('Perlu pemeriksaan'); setQuery(''); setPage('Rekap'); }
 
   function close() { dialog.current?.close(); setModal(null); setError(''); }
@@ -358,6 +380,7 @@ export default function App({ contextId = 'posko-sumedang', operator = 'Operator
   }
 
   function loadDemo() {
+    queuedSelection.current=null;
     setInput(sampleReport);
     setVersion(v => v + 1);
     setApproved(null);
@@ -371,11 +394,10 @@ export default function App({ contextId = 'posko-sumedang', operator = 'Operator
     const textToSend = raw.trim();
     setOperationError('');
 
-    if (!health || !sessionId) {
-      // Demo mode fallback
-      setInput(''); setApproved(null); setVersion(v => v + 1);
-      setMessages(m => [...m, { role: 'user', text: textToSend }, { role: 'assistant', text: 'Pesan diterima di sesi lokal. Agen belum terhubung, jadi laporan ini belum dianalisis. Anda dapat meninjau rekap contoh untuk mencoba alur pemeriksaan.' }]);
-      return { ok: true };
+    if (!browserOnline || !health || !sessionId) {
+      const message='Laporan belum dikirim. Hubungkan backend atau gunakan Catatan offline untuk menyimpannya di perangkat.';
+      setOperationError(message);
+      return { ok: false, message };
     }
 
     // Live mode backend dispatch
@@ -389,7 +411,23 @@ export default function App({ contextId = 'posko-sumedang', operator = 'Operator
     setMessages(m => [...m, sentMessage]);
     if (override === undefined) setInput(current => current.trim() === textToSend ? '' : current);
     try {
-      const res = await sendBackendMessage(sessionId, textToSend, override === undefined ? filename : undefined, correction);
+      let requestId:string|undefined;
+      if(override===undefined&&queuedSelection.current){
+        const selected=queuedSelection.current,current=await getReport(selected.id);
+        if(!current)throw new Error('Laporan antrean sudah dihapus. Simpan laporan baru sebelum mengirim.');
+        if(current.text.trim()!==textToSend||filename)throw new Error('Isi antrean berubah. Simpan sebagai laporan baru agar identitas pengiriman tidak tertukar.');
+        if(current.correction){
+          if(current.correction.owner!==preferenceKey||current.correction.contextId!==contextId)throw new Error('Koreksi offline harus dikirim dari akun dan pos komando asal.');
+          correction=current.correction.payload;
+        }
+        const binding=await bindDelivery(current.id,{sessionId,contextId,owner:preferenceKey,requestId:current.id});
+        if(binding.owner!==preferenceKey||binding.contextId!==contextId||binding.sessionId!==sessionId){setPage('Konflik');throw new Error('Laporan ini terikat pada akun, pos komando, atau sesi sebelumnya. Periksa hasil di sesi asal; pengiriman baru diblokir untuk mencegah duplikasi.');}
+        requestId=binding.requestId;
+      }
+      const res = await sendBackendMessage(sessionId, textToSend, override === undefined ? filename : undefined, correction,requestId);
+      if(requestId&&queuedSelection.current)await acknowledgeDelivery(queuedSelection.current.id,res.batch_id).catch(()=>setNotice('Server menerima laporan, tetapi status lokal belum diperbarui. Percobaan ulang tetap memakai identitas yang sama.'));
+      if(requestId){queuedSelection.current=null;window.dispatchEvent(new Event('sigap-offline-changed'));}
+      if(res.status!=='processing')setProcessing(false);
       setBatchId(res.batch_id);
       if (override === undefined) setFilename(undefined);
       setApproved(null);
@@ -477,7 +515,8 @@ export default function App({ contextId = 'posko-sumedang', operator = 'Operator
     openApproval();
   }
 
-  function reviewPicker() {
+  function reviewPicker(forConflict=false) {
+    if(page==='Konflik'&&!forConflict)return null;
     return pendingReviews.length > 0 && <div className="pending-reviews"><label className="field-label">Perubahan yang akan disimpan<select aria-label="Perubahan yang akan disimpan" value={candidateBatchId} disabled={processing || dispatching} onChange={e => activateReview(pendingReviews.find(review => review.batchId === e.target.value) || null)}>{pendingReviews.map(review => <option key={review.batchId} value={review.batchId}>{reviewLabel(review)}{submittedReviews.current.has(review.batchId) ? ' · keputusan terkirim' : ''}</option>)}</select></label><p>{pendingReviews.length} perubahan menunggu. Persetujuan hanya untuk pilihan ini.</p></div>;
   }
 
@@ -487,7 +526,6 @@ export default function App({ contextId = 'posko-sumedang', operator = 'Operator
     setPartial(false);
     setDecision('');
     setClearChoices({});
-    setConflictChoices({});
     setError('');
     setModal('approve');
   }
@@ -542,7 +580,15 @@ export default function App({ contextId = 'posko-sumedang', operator = 'Operator
   }
 
   async function clarify(s: Shelter, text: string, expected: ClarificationChanges, structured = false) {
-    if (!health || !sessionId) { setClarificationFeedback({ kind: 'error', text: 'Hubungkan backend untuk memvalidasi perubahan.' }); return; }
+    if (!health || !sessionId || !browserOnline) {
+      if(dispatchInFlight.current)return;
+      const report=s.correctionTarget?.report_id??s.id,batch=s.correctionTarget?.batch_id??s.sourceBatchId;
+      if(!structured||!batch||!s.calculationKey){setClarificationFeedback({kind:'error',text:'Salinan belum memiliki referensi koreksi lengkap. Simpan laporan manual di Catatan offline atau buka data terbaru saat online.'});return;}
+      dispatchInFlight.current=true;setDispatching(true);
+      try{await addReport(`Mohon klarifikasi laporan ${report} (${s.name}) batch ${batch}: ${text}`,{owner:preferenceKey,contextId,payload:{target:{report_id:report,batch_id:batch,name:s.name,village:s.village},base_key:s.calculationKey,changes:expected}});setClarificationFeedback({kind:'success',text:'Draf tersimpan di antrean perangkat. Belum dikirim atau disimpan ke rekap.'});}
+      catch{setClarificationFeedback({kind:'error',text:'Draf belum dapat disimpan di perangkat. Isian tetap tersedia.'});}
+      finally{dispatchInFlight.current=false;setDispatching(false);}return;
+    }
     if (processing || dispatchInFlight.current) { setClarificationFeedback({ kind: 'error', text: 'Tunggu proses yang sedang berjalan sebelum mengirim perubahan.' }); return; }
     const report = s.correctionTarget?.report_id ?? s.id, batch = s.correctionTarget?.batch_id ?? s.sourceBatchId;
     clarificationAttempt.current = { shelter: s, expected, received: false };
@@ -597,20 +643,23 @@ export default function App({ contextId = 'posko-sumedang', operator = 'Operator
           <span className="sub-title-secondary">Operasi Posko</span>
         </div>
       </div>
-      <nav aria-label="Navigasi utama" className="header-nav-tabs">
+      <nav aria-label="Navigasi utama" className="sigap-navigation">
         {pages.map(name => (
-          <button
+          <ActionButton
             key={name}
+            type="button"
+            variant="ghost"
             aria-current={page === name ? 'page' : undefined}
-            className={`nav-tab-btn ${page === name ? 'active' : ''}`}
+            className="sigap-nav-button"
             onClick={() => setPage(name)}
           >
             {name}
-            {page === name && <span className="nav-tab-active-indicator" />}
-          </button>
+          </ActionButton>
         ))}
       </nav>
       <div className="header-right-status-group">
+        <a href="/offline" className="button quiet">Catatan offline</a>
+        <ActionButton type="button" className="button quiet" disabled={!health||!sessionId||!activeRows.length||processing||dispatching} onClick={()=>void cacheShelters(preferenceKey,contextId,activeRows).then(()=>setNotice('Rekap tersedia di Catatan offline. Salinan dapat dibaca oleh pengguna profil browser ini.')).catch(()=>setOperationError('Rekap belum dapat disimpan di perangkat.'))}>Simpan rekap untuk offline</ActionButton>
         <div className="figma-pill-white">Operator</div>
         <button
           className="figma-pill-navy"
@@ -624,7 +673,7 @@ export default function App({ contextId = 'posko-sumedang', operator = 'Operator
           <span>{operator}</span>
           <span className="arrow-up-right" aria-hidden="true">↗</span>
         </button>
-        {onLogout && <button className="button quiet" onClick={onLogout}>Keluar</button>}
+        {onLogout && <ActionButton className="button quiet" onClick={onLogout}>Keluar</ActionButton>}
       </div>
     </header>
     {overviewStatus === 'loading' && (
@@ -639,14 +688,15 @@ export default function App({ contextId = 'posko-sumedang', operator = 'Operator
       </div>
     )}
     <main id="main-content" className={`page page-${page.toLowerCase()}`}><div className="workspace-load-status">{overviewStatus === 'error' && <div className="load-status-alert" role="status"><div className="load-status-message"><AlertCircle size={16} aria-hidden="true"/><span>Ringkasan belum dimuat lengkap.</span></div><button type="button" className="load-status-retry" disabled={processing || dispatching} onClick={() => sessionId ? setOverviewReload(n => n + 1) : setBootstrapReload(n => n + 1)}><RotateCw size={13} aria-hidden="true"/>Muat ulang data</button></div>}</div><Suspense fallback={<p role="status">Memuat halaman…</p>}>
-      {page !== 'Laporan' && operationError && <div className="operation-error" role="alert"><p>{operationError}</p><button className="button secondary" onClick={() => setPage('Laporan')}>Buka percakapan</button><button className="button quiet" onClick={() => setOperationError('')}>Tutup pesan gagal</button></div>}
+      {page !== 'Laporan' && operationError && <div className="operation-error" role="alert"><p>{operationError}</p><ActionButton className="button secondary" onClick={() => setPage('Laporan')}>Buka percakapan</ActionButton><ActionButton className="button quiet" onClick={() => setOperationError('')}>Tutup pesan gagal</ActionButton></div>}
       {page === 'Klarifikasi' && (detail && detailBinding.current === detailKey ? <ClarificationPage key={detailKey} shelter={detail} storageLabel={storageLabel(detail)} busy={processing || dispatching} canCalculate={!!health && !!sessionId}
         onCalculate={() => void send('Hitung kebutuhan seluruh posko dari rekap saat ini.')} onFocusField={focusClarification} onBack={backFromClarification} headingRef={heading}
         onApprove={reviewForShelter(pendingReviews, detail) ? () => openShelterApproval(detail) : undefined}
         onNext={(() => { const queue = tasksFor(activeRows, pendingReviews); const i = queue.findIndex(t => stableShelterKey(t.shelter) === stableShelterKey(detail)); const next = queue[i + 1]; return next ? () => openDetail(next.shelter, next.shelter.reviewItems?.[0]?.field) : undefined; })()}>
-        <ClarificationForm key={stableShelterKey(detail)} layout="page" draftKey={JSON.stringify([preferenceKey, contextId, stableShelterKey(detail)])} focusField={clarificationField} focusRevision={focusRevision} shelter={detail} busy={processing || dispatching} connected={!!health && !!sessionId} feedback={clarificationFeedback} onSubmit={clarify} />
-      </ClarificationPage> : <section className="card" aria-label="Klarifikasi posko"><h1 ref={heading} tabIndex={-1}>{activeRows.length ? 'Posko tidak ditemukan' : 'Memuat data posko…'}</h1><p>Halaman ini hanya membuka posko dari operasi yang sedang aktif.</p><button className="button secondary" onClick={backFromClarification}>Kembali</button></section>)}
+        <ClarificationForm key={stableShelterKey(detail)} layout="page" draftKey={JSON.stringify([preferenceKey, contextId, stableShelterKey(detail)])} focusField={clarificationField} focusRevision={focusRevision} shelter={detail} busy={processing || dispatching} connected={!!health && !!sessionId&&browserOnline} offline={!health||!sessionId||!browserOnline} feedback={clarificationFeedback} onSubmit={clarify} />
+      </ClarificationPage> : <section className="card" aria-label="Klarifikasi posko"><h1 ref={heading} tabIndex={-1}>{activeRows.length ? 'Posko tidak ditemukan' : 'Memuat data posko…'}</h1><p>Halaman ini hanya membuka posko dari operasi yang sedang aktif.</p><ActionButton className="button secondary" onClick={backFromClarification}>Kembali</ActionButton></section>)}
       {page === 'Tugas' && <TasksView rows={activeRows} reviews={pendingReviews} busy={processing || dispatching} headingRef={heading} onOpen={openTask} onReport={() => setPage('Laporan')} />}
+      {page==='Konflik'&&<section className="conflict-page" aria-label="Penyelesaian konflik"><h1 ref={heading} tabIndex={-1}>Periksa konflik laporan</h1><p>Pilih kandidat, bandingkan nilai tersimpan dan laporan baru, lalu tentukan nilainya. Penyimpanan tetap memerlukan persetujuan petugas.</p>{reviewPicker(true)}{storageConflicts(preview).length?<><p className="note">Keputusan terikat pada kandidat yang dipilih. Pilihan belum disimpan ke rekap.</p><ConflictReview preview={preview} choices={conflictChoices} onChange={setConflictChoices}/><ActionButton type="button" className="button primary" disabled={processing||dispatching||saveSubmitted||storageConflicts(preview).some((c:any)=>!conflictChoices[c.reportId]?.[c.field])} onClick={openApproval}>Lanjutkan ke persetujuan petugas</ActionButton></>:<p>Tidak ada konflik pada kandidat ini. Periksa kandidat lain atau kembali ke rekap.</p>}<ActionButton type="button" className="button secondary" onClick={()=>setPage('Rekap')}>Kembali ke rekap</ActionButton></section>}
       {(page === 'Laporan' || visited.includes('Laporan')) && <div hidden={page !== 'Laporan'}><LaporanView
         originalDocument={originalDocument}
         preferenceKey={`${preferenceKey}:${contextId}`}
@@ -661,12 +711,14 @@ export default function App({ contextId = 'posko-sumedang', operator = 'Operator
         onDismissError={() => setOperationError('')}
         onGoRekap={focus => { setView(focus?.metric ? 'Kebutuhan' : 'Posko'); if (focus?.metric) setMetricKey(focus.metric); setRekapFocus(previous => ({ ...focus, requestId: (previous?.requestId ?? 0) + 1 })); setPage('Rekap'); }}
         messages={messages}
+        canPrepareOffline={browserOnline&&!!health&&!!sessionId}
+        onPrepareOffline={(text,report)=>{if(report.correction&&(report.correction.owner!==preferenceKey||report.correction.contextId!==contextId)){setOperationError('Koreksi offline harus dikirim dari akun dan pos komando asal.');return false;}if(input.trim()){setOperationError('Formulir masih berisi teks. Kirim atau bersihkan terlebih dahulu sebelum menyiapkan laporan dari antrean.');return false;}queuedSelection.current=report;setInput(text);setFilename(undefined);setOperationError('');composer.current?.focus();return true;}}
         input={input}
         onInput={setInput}
         onSend={() => void send()}
         onUpload={() => upload.current?.click()}
-        onClear={() => { setInput(''); setFilename(undefined); }}
-        onSuggest={text => { setInput(text); composer.current?.focus(); }}
+        onClear={() => { queuedSelection.current=null;setInput(''); setFilename(undefined); }}
+        onSuggest={text => { queuedSelection.current=null;setInput(text); composer.current?.focus(); }}
         processing={processing}
         dispatching={dispatching}
         composerRef={composer}
@@ -734,9 +786,9 @@ export default function App({ contextId = 'posko-sumedang', operator = 'Operator
     </Suspense><footer className="page-footer">Data untuk demonstrasi Pos Komando. Keputusan distribusi tetap di tangan pimpinan.</footer>
     </main>
     <input ref={upload} type="file" accept=".txt,.csv,.pdf,.png,.jpg,.jpeg,text/plain,text/csv,application/pdf,image/png,image/jpeg" hidden onChange={e => { const file = e.target.files?.[0]; if (file) void readFile(file); }} />
-    {notice && <div className="toast" role="status"><Info size={18} /><span>{notice}</span><button className="icon-button" aria-label="Tutup pemberitahuan" onClick={() => setNotice('')}><X size={18} /></button></div>}
+    {notice && <div className="toast" role="status"><Info size={18} /><span>{notice}</span><ActionButton className="icon-button" aria-label="Tutup pemberitahuan" onClick={() => setNotice('')}><X size={18} /></ActionButton></div>}
     <dialog ref={dialog} aria-labelledby="dialog-title" className="dialog" onCancel={close} onClick={e => { if (e.target === dialog.current) close(); }}>
-      <div className="dialog-heading"><span id="dialog-title">{modal === 'approve' ? 'Tinjau persetujuan' : 'Koneksi & Pengaturan Sesi'}</span><button className="icon-button" aria-label="Tutup dialog" onClick={close}><X size={20} /></button></div>
+      <div className="dialog-heading"><span id="dialog-title">{modal === 'approve' ? 'Tinjau persetujuan' : 'Koneksi & Pengaturan Sesi'}</span><ActionButton className="icon-button" aria-label="Tutup dialog" onClick={close}><X size={20} /></ActionButton></div>
       {modal === 'approve' && <div className="dialog-body" aria-busy={dispatching}>
         <h2>{!preview || needsPartial ? 'Setujui rekap parsial?' : 'Setujui rekap?'}</h2>
         {preview && <p className="approval-scope"><strong>Kandidat yang disetujui:</strong> {reviewLabel({ batchId: candidateBatchId, preview })}. Kandidat lain menunggu persetujuan terpisah.</p>}
@@ -749,11 +801,11 @@ export default function App({ contextId = 'posko-sumedang', operator = 'Operator
           <label className="checkbox-row"><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} /><span>Saya menyetujui keputusan penyimpanan atas pratinjau versi {reviewedVersion}.</span></label>
         </fieldset>
         {error && <p className="form-error" role="alert">{error}</p>}
-        {saveSubmitted && !processing && saveOutcomes[candidateBatchId] === 'Hasil simpan belum terverifikasi' && <button className="button secondary" onClick={() => { close(); setPage('Laporan'); void send('Tolong baca rekap posko yang sudah tersimpan dan ringkas isinya.'); }}>Periksa rekap tersimpan</button>}
+        {saveSubmitted && !processing && saveOutcomes[candidateBatchId] === 'Hasil simpan belum terverifikasi' && <ActionButton className="button secondary" onClick={() => { close(); setPage('Laporan'); void send('Tolong baca rekap posko yang sudah tersimpan dan ringkas isinya.'); }}>Periksa rekap tersimpan</ActionButton>}
         {dispatching && <p role="status">Mengirim persetujuan. Menutup panel tidak membatalkan proses yang sedang berjalan.</p>}
-        <div className="dialog-actions"><button className="button secondary" onClick={close}>Kembali periksa</button><button className="button primary" disabled={dispatching || processing || saveSubmitted} onClick={approve}>{dispatching ? 'Mengirim persetujuan…' : <>Konfirmasi persetujuan<Check size={16} /></>}</button></div>
+        <div className="dialog-actions"><ActionButton className="button secondary" onClick={close}>Kembali periksa</ActionButton><ActionButton className="button primary" disabled={dispatching || processing || saveSubmitted} onClick={approve}>{dispatching ? 'Mengirim persetujuan…' : <>Konfirmasi persetujuan<Check size={16} /></>}</ActionButton></div>
       </div>}
-      {modal === 'connection' && <div className="dialog-body"><h2>Konfigurasi LLM</h2><p>Status Backend: <strong>{health ? health.backend : 'Tidak terhubung (Mode Demo)'}</strong></p><p>LLM / Agent: <strong>{health?.model || (health?.agent === 'gemini' ? 'Gemini' : health?.agent === 'openai' ? 'DeepSeek' : health?.agent === 'mock' ? 'Simulasi lokal' : health?.agent ? 'Agent' : 'Belum terhubung')}</strong>. Status koneksi menunjukkan konfigurasi; hasil nyata diperiksa lewat workflow.</p><p>Mode Operasi: <strong>{health ? health.mode : 'Demo lokal'}</strong></p><div className="dialog-actions"><button className="button secondary" onClick={close}>Tutup</button></div></div>}
+      {modal === 'connection' && <div className="dialog-body"><h2>Konfigurasi LLM</h2><p>Status Backend: <strong>{health ? health.backend : 'Tidak terhubung (Mode Demo)'}</strong></p><p>Status LLM: <strong>{statusLabel}</strong></p><p>LLM / Agent: <strong>{health?.model || (health?.agent === 'gemini' ? 'Gemini' : health?.agent === 'openai' ? 'DeepSeek' : health?.agent === 'watsonx' ? 'IBM watsonx' : health?.agent === 'mock' ? 'Simulasi lokal' : health?.agent ? 'Agent' : 'Belum terhubung')}</strong>. Status koneksi menunjukkan konfigurasi; hasil nyata diperiksa lewat workflow.</p><p>Mode Operasi: <strong>{health ? health.mode : 'Demo lokal'}</strong></p><div className="dialog-actions"><ActionButton className="button secondary" onClick={close}>Tutup</ActionButton></div></div>}
     </dialog>
   </div>;
 }

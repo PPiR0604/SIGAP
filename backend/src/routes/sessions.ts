@@ -25,11 +25,13 @@ export function createSessionsRoute(repo: Repository,auth?:AuthService,orchestra
             await repo.updateBatchStatus(pending.batch_id,pending.status==='processing'?'failed':'save_status_unknown');
             await repo.logAudit('PROCESS_INTERRUPTED',request.principal!.userId,pending.batch_id,{previous_status:pending.status});
           }
+          orchestrator?.warmSession(existing.session_id,existing.context_id);
           return reply.code(200).send({session_id:existing.session_id,context_id:existing.context_id,created_at:existing.created_at,resumed:true});
         }
       }
       const session = (await repo.createSession(contextId));
       if(auth){if(!(repo instanceof SupabaseRepository))throw new Error('Authenticated sessions require cloud storage.');await repo.bindSession(session.session_id,request.principal!.userId,request.principal!.membership.organization_id!);}
+      if(auth&&parsed.success&&parsed.data.resume)orchestrator?.warmSession(session.session_id,session.context_id);
       return reply.code(201).send({
         session_id: session.session_id,
         context_id: session.context_id,

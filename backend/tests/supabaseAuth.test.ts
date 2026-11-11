@@ -34,6 +34,17 @@ class FakeGateway extends SupabaseGateway{
   else if(action==='profile.ensure'||action==='profile.get')result=this.profiles.get(args.user_id)??{user_id:args.user_id,status:'pending',role:null,organization_id:null,scopes:[]};
   else if(action==='scope.check'){const p=this.profiles.get(args.actor_id);if(!p||p.status!=='active'||!['admin','petugas'].includes(p.role??'')||p.role!=='admin'&&!p.scopes.includes(args.context_id))throw new Error('Denied');result=p;}
   else if(action==='entity.get')result=this.entities.get(args.kind+':'+args.id)??null;
+  else if(action==='review.prepare'){
+   const snapshot=args.snapshot,batch=this.entities.get('batches:'+snapshot.batch_id);
+   if(!batch||batch.session_id!==args.session_id||!['processing','ready_for_review'].includes(batch.status))throw Error('Review not editable');
+   const existing=this.entities.get('snapshots:'+snapshot.snapshot_id);
+   if(existing)result={created:false,snapshot:existing};
+   else{
+    const saved={...snapshot,version:batch.latest_snapshot_id?2:1};this.entities.set('snapshots:'+saved.snapshot_id,saved);
+    Object.assign(batch,{status:'ready_for_review',latest_snapshot_id:saved.snapshot_id,latest_snapshot_sha256:saved.snapshot_sha256,preview_payload_json:saved.payload_json,quality_status:saved.quality_status});
+    result={created:true,snapshot:saved};
+   }
+  }
   else if(action==='entity.list')result=[...this.entities].filter(([k,v])=>k.startsWith(args.kind+':')&&Object.entries(args.filter??{}).every(([a,b])=>v[a]===b)).map(([,v])=>v);
   else if(action==='entity.put'){const key=args.kind+':'+args.id;if(this.entities.has(key))throw new Error('Duplicate');result=this.jsonb?jsonbOrder(args.document):structuredClone(args.document);if(args.kind==='events')result.event_id=++this.seq;this.entities.set(key,result);}
   else if(action==='entity.patch'){const key=args.kind+':'+args.id,old=this.entities.get(key);if(!old||Object.entries(args.expected??{}).some(([k,v])=>old[k]!==v))return null as T;result=this.jsonb?jsonbOrder({...old,...args.patch}):{...old,...args.patch};this.entities.set(key,result);}
@@ -48,6 +59,97 @@ class FakeGateway extends SupabaseGateway{
 async function fixture(documentExtractor?:DocumentExtractor,runtime=new FakeAgentRuntime()){const gateway=new FakeGateway(),auth=new AuthService(gateway),repo=new SupabaseRepository(gateway);
  const config:AppConfig={host:'127.0.0.1',port:0,allowedOrigins:['http://localhost:5173'],bobCommand:'bob',bobArgs:'',bobWorkspace:'',langflowUrl:'',snapshotDir:'',maxInputBytes:204800,retentionDays:7,approvalTtlSeconds:3600,dbPath:':memory:',sessionToken:'old-shared-token'};
  const server=await buildServer({config,repo,auth,runtime,documentExtractor});await server.app.ready();return {...server,gateway,auth};}
+
+test('authorized session routes reuse only their request-owned resource after live checks',async()=>{
+ const f=await fixture();try{
+  const token=f.gateway.identity('request-owner'),headers={authorization:'Bearer '+token};
+  const created=(await f.app.inject({method:'POST',url:'/api/sessions',headers,payload:{context_id:'posko-a'}})).json();
+  const original=f.gateway.call.bind(f.gateway);let reads=0,scopeChecks=0;
+  f.gateway.call=async(action,args:any={})=>{
+   if(action==='entity.get'&&args.kind==='sessions')reads++;
+   if(action==='scope.check')scopeChecks++;
+   if(action==='storage.read')return {document:{header:[],rows:[]}} as any;
+   return original(action,args);
+  };
+  f.orchestrator.readWorkspaceOverview=async(id,checked)=>{
+   assert.equal(id,created.session_id);assert.equal(checked?.session_id,id);
+   assert.equal(checked?.context_id,'posko-a');assert.ok(Object.isFrozen(checked));return {status:'unavailable'};
+  };
+  const base=`/api/sessions/${created.session_id}`;
+  for(const request of [
+   {url:base+'/recovery',expected:200},
+   {url:base+'/events?stream=false',expected:200},
+   {url:base+'/overview',expected:200},
+   {method:'POST' as const,url:base+'/messages',payload:{request_id:'empty',text:''},expected:422},
+   {method:'POST' as const,url:base+'/documents/extract',headers:{'content-type':'application/octet-stream','x-document-name':'%'},payload:Buffer.from('%PDF-fixture'),expected:422},
+  ]){
+   reads=0;scopeChecks=0;
+   const {expected,...options}=request;
+   const response=await f.app.inject({...options,headers:{...headers,...options.headers}});
+   assert.equal(response.statusCode,expected,response.body);assert.equal(reads,1,request.url);assert.equal(scopeChecks,1,request.url);
+  }
+ }finally{await f.app.close();}
+});
+
+test('message preflight uses one batch read and returns prior retries before another active process',async()=>{
+ const f=await fixture();try{
+  const token=f.gateway.identity('submission-owner'),headers={authorization:'Bearer '+token};
+  const created=(await f.app.inject({method:'POST',url:'/api/sessions',headers,payload:{context_id:'posko-a'}})).json();
+  const text='Laporan sintetis posko uji, 10 jiwa.';
+  const create=(requestId:string)=>f.repo.createBatch({sessionId:created.session_id,contextId:'posko-a',requestId,sourceSha256:createHash('sha256').update(text).digest('hex'),sourceLength:text.length,filteredText:text,piiSummary:{}});
+  const previous=await create('retry');await f.repo.updateBatchStatus(previous.batch_id,'ready_for_review');
+  await create('active');let lists=0,scheduled=0;
+  const original=f.gateway.call.bind(f.gateway);
+  f.gateway.call=async(action,args:any={})=>{if(action==='entity.list'&&args.kind==='batches')lists++;return original(action,args);};
+  f.orchestrator.schedule=()=>{scheduled++;};
+  for(const [request_id,body,status,code] of [['retry',text,200,undefined],['retry',text+' changed',409,'REQUEST_CONTENT_CONFLICT'],['new',text,409,'ACTIVE_BATCH_IN_PROGRESS']] as const){
+   lists=0;
+   const response=await f.app.inject({method:'POST',url:`/api/sessions/${created.session_id}/messages`,headers,payload:{request_id,text:body}});
+   assert.equal(response.statusCode,status);assert.equal(response.json().error?.code,code);assert.equal(lists,1);
+   if(status===200)assert.equal(response.json().batch_id,previous.batch_id);
+  }
+  assert.equal(scheduled,0,'Retries/conflicts must not start another workflow');
+ }finally{await f.app.close();}
+});
+
+test('request-owned sessions never mask later scope, ownership or login revocation',async()=>{
+ const f=await fixture();try{
+  const token=f.gateway.identity('fresh-owner'),headers={authorization:'Bearer '+token};
+  const created=(await f.app.inject({method:'POST',url:'/api/sessions',headers,payload:{context_id:'posko-a'}})).json();
+  const original=f.gateway.call.bind(f.gateway);let storageReads=0;
+  f.gateway.call=async(action,args:any={})=>{if(action==='storage.read'){storageReads++;return {revision:0,document:{header:[],rows:[]},recovery:{session_id:args.recovery_session_id,after_event_id:0,state:{reviews:[],activeBatch:null}}} as any;}return original(action,args);};
+  const read=()=>f.app.inject({url:`/api/sessions/${created.session_id}/recovery`,headers});
+  assert.equal((await read()).statusCode,200);
+  f.gateway.profiles.get('fresh-owner')!.scopes=[];assert.equal((await read()).statusCode,403);
+  f.gateway.profiles.get('fresh-owner')!.scopes=['posko-a'];
+  const stored=f.gateway.entities.get('sessions:'+created.session_id);stored.owner_user_id='other-owner';assert.equal((await read()).statusCode,404);
+  stored.owner_user_id='fresh-owner';f.gateway.revoked.add('fresh-owner-session');assert.equal((await read()).statusCode,401);
+  assert.equal(storageReads,1,'Rejected later requests must never reach operational storage');
+ }finally{await f.app.close();}
+});
+
+test('authorized resumable sessions prepare metadata without delaying the response or processing a report',async()=>{
+ const runtime=new FakeAgentRuntime(),calls:string[]=[];let release!:()=>void;
+ const barrier=new Promise<void>(resolve=>{release=resolve;}),initialize=runtime.initSession.bind(runtime);
+ runtime.initSession=async config=>{calls.push(config.sessionId);await barrier;return initialize(config);};
+ runtime.sendPrompt=async()=>assert.fail('Session creation must never invoke a model/workflow.');
+ const f=await fixture(undefined,runtime);
+ try{
+  const token=f.gateway.identity('warm-owner'),headers={authorization:'Bearer '+token};
+  const create=()=>f.app.inject({method:'POST',url:'/api/sessions',headers,payload:{context_id:'posko-a',resume:true}});
+  const first=await create();assert.equal(first.statusCode,201);
+  await new Promise<void>(resolve=>setImmediate(resolve));
+  assert.deepEqual(calls,[first.json().session_id]);
+  assert.equal((await create()).json().session_id,first.json().session_id);
+  assert.equal(calls.length,1);assert.equal(await f.repo.countBatches(first.json().session_id),0);
+  for(const [id,role,context] of [['warm-viewer','viewer','posko-a'],['warm-outside','petugas','posko-b']] as const){
+   const denied=f.gateway.identity(id,role);
+   assert.equal((await f.app.inject({method:'POST',url:'/api/sessions',headers:{authorization:'Bearer '+denied},payload:{context_id:context,resume:true}})).statusCode,403);
+  }
+  assert.equal(calls.length,1);
+  assert.equal([...f.gateway.entities.keys()].filter(k=>k.startsWith('events:')||k.startsWith('approvals:')).length,0);
+ }finally{release();await f.app.close();}
+});
 
 async function publicationFixture(){
  const f=await fixture(),token=f.gateway.identity('publisher','admin'),headers={authorization:'Bearer '+token};

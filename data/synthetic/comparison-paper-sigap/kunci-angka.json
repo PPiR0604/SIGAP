@@ -1,0 +1,29 @@
+{
+  "synthetic": true,
+  "study_results": false,
+  "water_l_per_person_per_24h": 15,
+  "A": {
+    "shelters": ["Harapan/Sukamaju", "Harapan/Cipandan", "Melati/Sukaasih"],
+    "T01": [[40,18,22],[30,14,16],[50,null,null]],
+    "T02": [[48,22,26],[30,14,16],[50,null,null]],
+    "T03": [[48,22,26],[30,14,16],[52,24,28]],
+    "totals": [120,128,130],
+    "stock_liters": [300,0,null],
+    "water_need_final": [720,450,780],
+    "water_gap_final": [420,450,null],
+    "total_water_need_final": 1950,
+    "known_water_gap_sum_final": 870
+  },
+  "B": {
+    "shelters": ["Sejahtera/Karangmulya", "Sejahtera/Cibening", "Kenanga/Mekarsari"],
+    "T01": [[44,20,24],[32,15,17],[46,null,null]],
+    "T02": [[52,24,28],[32,15,17],[46,null,null]],
+    "T03": [[52,24,28],[32,15,17],[48,23,25]],
+    "totals": [122,130,132],
+    "stock_liters": [360,0,null],
+    "water_need_final": [780,480,720],
+    "water_gap_final": [420,480,null],
+    "total_water_need_final": 1980,
+    "known_water_gap_sum_final": 900
+  }
+}

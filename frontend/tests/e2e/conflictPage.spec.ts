@@ -1,0 +1,23 @@
+import {test,expect} from '@playwright/test';
+test('halaman konflik meminta keputusan dan persetujuan terpisah sebelum menyimpan',async({page})=>{
+  const batch='e'.repeat(32),snapshot='f'.repeat(32);
+  const frame=(event:string,data:any)=>`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  await page.route('**/api/sessions/*/events',r=>r.fulfill({contentType:'text/event-stream',body:frame('preview_ready',{batch_id:batch,snapshot_id:snapshot,records:[{report_id:'R001',shelter_name:'Posko Uji Konflik',village:'Desa Uji',total_people:12,storage_conflicts:[{field:'total_people',previous_value:10,incoming_value:12}]}]})+frame('processing_completed',{batch_id:batch})}));
+  let saved:any;await page.route('**/api/batches/*/decisions',r=>{saved=r.request().postDataJSON();return r.fulfill({status:202,json:{success:true,status:'saving'}});});
+  await page.goto('/');
+  await page.getByRole('button',{name:'Konflik',exact:true}).click();
+  const panel=page.getByRole('region',{name:'Penyelesaian konflik'});
+  await expect(panel).toBeVisible();await expect(page).toHaveURL(/view=Konflik/);
+  const next=panel.getByRole('button',{name:'Lanjutkan ke persetujuan petugas'});
+  await expect(next).toBeDisabled();
+  await panel.getByRole('combobox',{name:'Konflik R001 total_people'}).selectOption('keep');
+  expect(saved).toBeUndefined();await next.click();
+  const dialog=page.getByRole('dialog',{name:'Tinjau persetujuan'});
+  await expect(dialog.getByRole('combobox',{name:'Konflik R001 total_people'})).toHaveValue('keep');
+  await dialog.getByRole('button',{name:'Konfirmasi persetujuan'}).click();
+  await expect(dialog.getByRole('alert')).toContainText('persetujuan eksplisit');expect(saved).toBeUndefined();
+  await dialog.getByLabel(/Saya memahami rekap/).check();await dialog.getByLabel(/Saya menyetujui keputusan/).check();
+  await dialog.getByRole('button',{name:'Konfirmasi persetujuan'}).click();
+  await expect.poll(()=>saved?.conflict_decisions).toEqual({R001:{total_people:'keep'}});
+  expect(saved.snapshot_id).toBe(snapshot);
+});

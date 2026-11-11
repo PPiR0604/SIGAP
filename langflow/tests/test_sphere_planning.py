@@ -3,7 +3,7 @@ import json
 import tempfile
 import os
 from unittest.mock import patch
-from langflow.tests import test_sqlite_migration  # Installs minimal Langflow UI stubs only.
+import test_sqlite_migration  # Sibling fixture; avoid the installed Langflow package's test module.
 from needs_gap_calculator import assess_shelter, calculate, NeedsGapCalculator, extract_json
 from sigap_contracts import save_snapshot
 

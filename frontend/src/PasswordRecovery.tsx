@@ -1,3 +1,4 @@
+import {ActionButton} from './ui/ActionButton';
 import { useRef, useState } from 'react';
 import { BrandLogo } from './BrandLogo';
 import { Eye, EyeOff } from 'lucide-react';
@@ -29,8 +30,8 @@ export function PasswordRecovery({ token, initialError, onBack, onTokenClear }: 
         {message && <p className="auth-feedback is-info" role="status">{message}</p>}
         {!done && <form onSubmit={submit} aria-label={setting ? 'Form kata sandi baru' : 'Form pemulihan akun'} aria-busy={busy}>
             {setting ? <><div className="auth-field"><label htmlFor="recovery-password">Kata sandi baru</label><div className="auth-password-wrap"><input id="recovery-password" type={show ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} required minLength={8} maxLength={128} autoComplete="new-password" disabled={busy} aria-describedby="recovery-password-help" /><button type="button" className="auth-password-toggle" aria-label={show ? 'Sembunyikan kata sandi baru' : 'Tampilkan kata sandi baru'} aria-pressed={show} onClick={() => setShow(!show)} disabled={busy}>{show ? <EyeOff size={20} aria-hidden="true" /> : <Eye size={20} aria-hidden="true" />}</button></div><p id="recovery-password-help" className="auth-hint">Minimal 8 karakter. Gunakan kata sandi yang tidak dipakai di akun lain.</p></div><div className="auth-field"><label htmlFor="recovery-confirm">Konfirmasi kata sandi baru</label><input id="recovery-confirm" type={show ? 'text' : 'password'} value={confirm} onChange={e => setConfirm(e.target.value)} required minLength={8} maxLength={128} autoComplete="new-password" disabled={busy} /></div></> : <div className="auth-field"><label htmlFor="recovery-email">Email</label><input id="recovery-email" type="email" required maxLength={254} autoComplete="username" autoCapitalize="none" spellCheck={false} value={email} onChange={e => setEmail(e.target.value)} disabled={busy} /></div>}
-            <button className="button primary auth-submit" disabled={busy}>{busy ? 'Memproses…' : setting ? 'Simpan kata sandi baru' : 'Kirim tautan pemulihan'}</button>
+            <ActionButton className="button primary auth-submit" disabled={busy}>{busy ? 'Memproses…' : setting ? 'Simpan kata sandi baru' : 'Kirim tautan pemulihan'}</ActionButton>
         </form>}
-        <button type="button" className="button secondary" disabled={busy} onClick={() => { recoveryToken.current = ''; onBack(); }}>Kembali ke halaman masuk</button>
+        <ActionButton type="button" className="button secondary" disabled={busy} onClick={() => { recoveryToken.current = ''; onBack(); }}>Kembali ke halaman masuk</ActionButton>
     </div></section></main>;
 }

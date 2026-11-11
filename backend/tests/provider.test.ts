@@ -24,3 +24,11 @@ test('mock remains explicit and rejects unknown provider configuration',async()=
   try{await assert.rejects(buildServer({repo:another,config:{...base,agentProvider:'unknown'} as any}),/provider/i);}
   finally{another.close();}
 });
+
+test('watsonx health identifies Bob as unused without claiming a live MCP',async()=>{
+  const repo=new SigapRepository(':memory:');
+  const runtime={provider:'watsonx' as const,model:'ibm/granite-4-h-small',isAvailable:async()=>true,initSession:async()=>'',sendPrompt:async()=>{},closeSession:async()=>{}};
+  const {app}=await buildServer({repo,config:{...base,agentProvider:'watsonx'} as AppConfig,runtime,sessionConfig:{}});
+  try{const health=(await app.inject('/api/health')).json();assert.equal(health.agent,'watsonx');assert.equal(health.bob,'not_used');assert.equal(health.mode,'degraded');assert.equal(health.write_enabled,false);}
+  finally{await app.close();repo.close();}
+});

@@ -2,8 +2,24 @@ import {ToolValidationError} from '../acp/errors.js';
 
 const fields=new Set(['report_id','reported_at','shelter_name','village','shelter_type','total_people','total_families','male','female','infants_toddlers','children','elderly','pregnant','breastfeeding','disability','urgent_needs','surplus_do_not_send','notes','stock','stock_context','is_estimate']);
 
+/** Recover only one explicit name within the same signed source report. No model retry. */
+function explicitSourceName(source:string,reportId:string):string|undefined {
+  const headers=[...source.matchAll(/^\[(R\d+)\]([^\n]*)(?:\n|$)/gm)];
+  const index=headers.findIndex(match=>match[1]===reportId);
+  if(index<0)return undefined;
+  const header=headers[index];
+  const body=header[2]+'\n'+source.slice(header.index!+header[0].length,headers[index+1]?.index??source.length);
+  const pattern=/\b(Posko[ \t]+[^\n,.;:!?()]+?)(?=[ \t]+(?:di[ \t]+(?:Desa|Kelurahan)\b|(?:memiliki|menampung|dengan|total)\b|\d+[ \t]+(?:jiwa|pengungsi)\b)|[,.;:!?()\n]|$)/gi;
+  const names=new Map<string,string>();
+  for(const match of body.matchAll(pattern)){
+    const name=match[1].trim();
+    if(name.length<=200)names.set(name.toLocaleLowerCase(),name);
+  }
+  return names.size===1?[...names.values()][0]:undefined;
+}
+
 /** Model output contains extraction only; identity, provenance and consent belong to the server. */
-export function parseExtraction(content:string,ids:Set<string>,maxBytes:number):Record<string,unknown>[] {
+export function parseExtraction(content:string,ids:Set<string>,maxBytes:number,sourceText?:string):Record<string,unknown>[] {
   const fail=(message:string):never=>{throw new ToolValidationError(message);};
   if(Buffer.byteLength(content,'utf8')>maxBytes)fail('Respons ekstraksi terlalu besar. Bagi laporan menjadi beberapa pesan.');
   const fenced=/^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(content.trim());
@@ -15,6 +31,14 @@ export function parseExtraction(content:string,ids:Set<string>,maxBytes:number):
     if(!record||typeof record!=='object'||Array.isArray(record)||typeof record.report_id!=='string'||!ids.has(record.report_id)||seen.has(record.report_id))fail('ID laporan hasil ekstraksi tidak sesuai sumber.');
     if(Object.keys(record).some(key=>!fields.has(key)))fail('Respons ekstraksi memuat field di luar data laporan. Belum ada data disimpan.');
     seen.add(record.report_id);
+    if(sourceText&&(record.shelter_name==null||typeof record.shelter_name==='string')){
+      const name=explicitSourceName(sourceText,record.report_id);
+      const given=typeof record.shelter_name==='string'?record.shelter_name.trim():'';
+      const key=(v:string)=>v.replace(/\s+/g,' ').toLocaleLowerCase();
+      // Some model responses drop only the literal Posko prefix. Preserve the
+      // unique source spelling rather than creating a different shelter identity.
+      if(name&&(!given||key(given)===key(name.replace(/^Posko\s+/i,''))))record.shelter_name=name;
+    }
   }
   const pending:unknown[]=[extracted.records];
   while(pending.length){

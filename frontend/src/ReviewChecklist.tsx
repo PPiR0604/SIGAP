@@ -1,3 +1,4 @@
+import {ActionButton} from './ui/ActionButton';
 import type {CSSProperties} from 'react';
 import { AlertTriangle, ClipboardList, PackageSearch, Scale, ChevronDown } from 'lucide-react';
 import type {ReviewItem,ReviewKind} from './reviewIndicators';
@@ -21,7 +22,7 @@ export function ReviewChecklist({items=[],onResolve}:{items?:ReviewItem[];onReso
           <ul className="review-tags">{compact.map((item,index)=><li key={`${item.field}:${index}`}>{onResolve?<button type="button" onClick={()=>onResolve(item.field)}>{group.kind==='stock'?missingStock(item):item.text.replace(/ belum dilaporkan\.$/,'')} · Lengkapi</button>:group.kind==='stock' ? missingStock(item) : item.text.replace(/ belum dilaporkan\.$/,'')}</li>)}</ul>
           {group.kind==='stock' && <p className="review-group-help">Kekurangan belum dapat dipastikan tanpa data stok.</p>}
         </>}
-        {details.length>0 && <ul className="review-details">{details.map((item,index)=><li key={`${item.field}:${index}`}>{item.text}{onResolve&&<button className="button quiet" type="button" onClick={()=>onResolve(item.field)}>Periksa data</button>}</li>)}</ul>}
+        {details.length>0 && <ul className="review-details">{details.map((item,index)=><li key={`${item.field}:${index}`}>{item.text}{onResolve&&<ActionButton className="button quiet" type="button" onClick={()=>onResolve(item.field)}>Periksa data</ActionButton>}</li>)}</ul>}
       </div>;
     })}
     </div>

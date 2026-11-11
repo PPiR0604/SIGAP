@@ -1,0 +1,213 @@
+@reference "../styles/globals.css";
+@font-face {
+  font-family:'Inter Variable';
+  src:url('@fontsource-variable/inter/files/inter-latin-wght-normal.woff2') format('woff2');
+  font-weight:100 900;
+  font-style:normal;
+  font-display:swap;
+}
+
+/* Bridge the existing operational layouts to the installed BoardUI foundations.
+   These aliases keep data presentation and approval states intact. */
+:root {
+  --font-inter: 'Inter Variable';
+  --ink: var(--color-text-primary);
+  --muted: var(--color-text-secondary);
+  --subtle: var(--color-text-tertiary);
+  --border: var(--color-border-button-default);
+  --surface: var(--color-background-primary-default);
+  --bg: var(--color-background-secondary-default);
+  --primary: var(--color-accent-600);
+  --primary-hover: var(--color-accent-700);
+  --primary-soft: var(--color-background-tertiary-default);
+  --teal: var(--color-text-secondary);
+  --success-bg: var(--color-status-lime-background);
+  --success-fg: var(--color-status-lime-text);
+  --warn-bg: var(--color-status-yellow-background);
+  --warn-fg: var(--color-status-yellow-text);
+  --warn-border: var(--color-status-yellow-background);
+  --neutral-bg: var(--color-background-tertiary-default);
+  --neutral-fg: var(--color-text-secondary);
+  --ux-danger: var(--color-text-error-primary);
+  --ux-attention: var(--color-status-yellow-text);
+  --radius: var(--radius-3xl);
+  --shadow: var(--shadow-card);
+  --fs-title: var(--text-title-1-semibold);
+  --fs-heading: var(--text-title-3-semibold);
+  --fs-body: var(--text-body-regular);
+  --fs-small: var(--text-caption-1-medium);
+  --fs-tiny: var(--text-caption-1-medium);
+  font-size: 16px;
+  scroll-padding-block-end:6rem;
+  @apply font-sans text-text-primary bg-background-secondary-default;
+}
+body { @apply font-sans text-body-regular text-text-primary bg-background-secondary-default; }
+h1 { @apply text-title-1-semibold text-text-primary; }
+h2 { @apply text-title-3-semibold text-text-primary; }
+h3 { @apply text-headline-medium text-text-primary; }
+::selection { background: var(--color-status-blue-background); color: var(--color-text-primary); }
+
+.card,.task-card,.recap-mobile-list .card,.laporan-chat-card,.laporan-extraction-card,
+.report-overview,.report-sidebar,.clarification-editor,.clarification-reference,
+.offline-reports,.management-card {
+  @apply rounded-3xl border-border-button-default bg-background-primary-default text-text-primary;
+  box-shadow: var(--shadow-card);
+}
+.heading-row h1,.page-heading h1,.clarification-page-heading h1,.tasks-view .heading-row h1 { @apply text-title-1-semibold text-text-primary; }
+.heading-row p,.detail-meta,.muted,.note,.storage-state { @apply text-text-secondary; }
+.task-card header h2,.offline-reports h2 { @apply text-title-3-semibold; }
+.task-grid { @apply gap-4; }
+.task-card { @apply p-6; }
+.task-card:hover { border-color: var(--color-border-button-hover); box-shadow: var(--shadow-card); transform:none; }
+.task-card strong { @apply text-headline-medium; }
+.task-card .sigap-action { @apply mt-2 self-start; }
+
+/* Real BoardUI Button instances retain the existing layout hook `.button`. */
+.button.sigap-action,.sigap-action {
+  @apply inline-flex min-h-11 h-auto items-center justify-center gap-1 rounded-xl px-3 py-2 text-body-medium;
+  white-space:normal;
+}
+.button.sigap-action > span,.sigap-action > span { flex-shrink:1; white-space:normal; }
+.button.sigap-action[data-variant="primary"],.sigap-action[data-variant="primary"] { @apply bg-button-primary text-text-white shadow-xs; border:0; }
+.button.sigap-action[data-variant="secondary"],.sigap-action[data-variant="secondary"] { @apply border border-border-button-default bg-background-primary-default text-text-primary shadow-xs; }
+.button.sigap-action[data-variant="ghost"],.sigap-action[data-variant="ghost"] { @apply text-text-secondary bg-button-ghost-background; border:0; box-shadow:none; }
+.button.sigap-action[data-variant="danger"],.sigap-action[data-variant="danger"] { @apply bg-button-danger text-text-white; border:0; }
+.button.sigap-action[data-variant="secondary"]:hover:not(:disabled),.sigap-action[data-variant="secondary"]:hover:not(:disabled),
+.button.sigap-action[data-variant="ghost"]:hover:not(:disabled),.sigap-action[data-variant="ghost"]:hover:not(:disabled) { @apply bg-background-primary-hover; }
+.sigap-action:focus-visible { @apply outline-none ring-2 ring-border-focus-ring ring-offset-2; }
+.sigap-action:disabled { @apply cursor-not-allowed; }
+.sigap-action:active { transform:none; }
+.help-tip-button { scroll-margin-block-end:6rem; }
+
+/* Navigation stays a landmark with native buttons and the same page state. */
+.app-header {
+  @apply gap-x-4 gap-y-3 px-6 py-4 bg-background-primary-default border-separator-border;
+  display:flex; flex-wrap:wrap; height:auto;
+}
+.header-brand-group { @apply me-auto; }
+.brand-name { @apply text-title-2-semibold text-text-primary; }
+.brand-subtitles .sub-title-main,.brand-subtitles .sub-title-secondary { @apply text-caption-1-medium text-text-secondary; }
+.brand-vertical-divider { background:var(--color-separator-border); }
+.app-header .sigap-navigation {
+  @apply flex w-full items-center justify-center gap-1 rounded-2xl bg-background-secondary-default p-1;
+  order:3; margin:0; flex-basis:100%; overflow-x:auto;
+}
+.app-header .sigap-navigation .sigap-nav-button {
+  @apply min-h-11 flex-1 rounded-xl px-4 py-2 text-body-medium text-text-secondary;
+  border:0; box-shadow:none; background:transparent; white-space:nowrap;
+}
+.app-header .sigap-navigation .sigap-nav-button[aria-current="page"] {
+  @apply bg-background-primary-default text-text-primary;
+  box-shadow:var(--shadow-xs);
+}
+.header-right-status-group { @apply flex flex-wrap items-center justify-end gap-2; }
+.header-right-status-group .figma-pill-white { @apply text-caption-1-medium text-text-secondary; border:0; background:transparent; }
+.header-right-status-group .figma-pill-navy { @apply min-h-11 rounded-full px-3 bg-background-tertiary-default text-text-primary; border:0; }
+.header-right-status-group .officer-avatar { @apply bg-background-primary-default text-foreground-icon-secondary; }
+.context-bar { @apply bg-background-secondary-default text-text-secondary border-b border-separator-border; }
+.context-bar select { @apply rounded-xl border border-border-button-default bg-background-primary-default px-3 py-2 text-body-medium text-text-primary; }
+
+/* Installed BoardUI pills replace local hand-drawn tabs in clarification. */
+.sigap-pill-tabs { @apply mb-4 w-full flex-wrap gap-1 rounded-xl bg-background-secondary-default p-1; }
+.sigap-pill-tabs button { @apply min-h-11 flex-1 justify-center px-3; }
+.sigap-pill-tabs button [class*="text-body"] { @apply text-body-medium; }
+.clarification-section { @apply rounded-2xl border-border-button-default; }
+.clarification-page .clarification-actions { @apply bg-background-primary-default border-separator-border; box-shadow:var(--shadow-sm); }
+
+/* Existing domain forms keep their labels, numeric semantics and validation. */
+input:not([type="checkbox"]):not([type="radio"]),textarea,select {
+  border-color:var(--color-border-button-default);
+  color:var(--color-text-primary);
+  background-color:var(--color-background-tertiary-default);
+  border-radius:var(--radius-xl);
+}
+input:focus,textarea:focus,select:focus { border-color:var(--color-border-focus-ring); }
+.auth-card .sigap-input-shell { @apply min-h-12 rounded-xl bg-background-tertiary-default; }
+.auth-card .sigap-input-shell input {
+  @apply min-h-0 rounded-none border-0 bg-transparent p-0 m-0 text-headline-regular text-text-primary;
+  box-shadow:none; outline:none;
+}
+.auth-password-wrap .sigap-input-shell { @apply pe-14; }
+.auth-page { @apply bg-background-secondary-default; background-image:none; }
+.auth-card { @apply rounded-3xl border-border-button-default; box-shadow:var(--shadow-card); }
+.auth-main { @apply p-8; }
+.auth-heading h1 { @apply text-title-1-semibold; }
+.auth-mode-switch { @apply rounded-xl bg-background-tertiary-default p-1; }
+.auth-mode-switch button { @apply rounded-lg text-body-medium text-text-secondary; }
+.auth-mode-switch button[aria-pressed="true"] { @apply bg-background-primary-default text-text-primary; box-shadow:var(--shadow-xs); }
+.auth-brand { @apply text-text-primary; }
+.auth-brand small { @apply text-caption-1-medium text-text-secondary; }
+
+table { @apply text-body-regular; }
+th { @apply text-caption-1-medium text-text-secondary bg-background-secondary-default; }
+td { border-color:var(--color-separator-border); }
+tbody tr:hover { background:var(--color-background-secondary-hover); }
+/* Keep recap row headings on the same surface as the rest of their row. */
+.category-summary-scroll { @apply rounded-xl border border-border-table; }
+.category-summary-scroll .category-summary-table { table-layout:fixed; min-width:560px; }
+.category-summary-table th:nth-child(1) { width:24%; }
+.category-summary-table th:nth-child(2) { width:15%; }
+.category-summary-table th:nth-child(3) { width:33%; }
+.category-summary-table th:nth-child(4) { width:28%; }
+.category-summary-table thead th {
+  @apply px-4 py-3 text-caption-1-medium text-text-secondary;
+  text-align:start;
+}
+.category-summary-table tbody th,.category-summary-table td {
+  @apply px-4 py-3 text-body-regular border-separator-border;
+  background:transparent; text-align:start;
+}
+.category-summary-table tbody th { @apply text-body-medium text-text-primary; }
+.category-summary-table th:nth-child(2),.category-summary-table .category-summary-count {
+  @apply px-4;
+  text-align:end; font-variant-numeric:tabular-nums;
+}
+.category-summary-table th:last-child,.category-summary-table td:last-child { text-align:end; }
+.category-summary-table .category-estimate strong { @apply text-body-medium; font-variant-numeric:tabular-nums; }
+.category-summary-table .category-estimate small { @apply mt-1 text-caption-1-medium text-text-secondary; }
+.category-summary-table .category-summary-empty { @apply text-caption-1-medium text-text-secondary; max-width:none; }
+.category-summary-table .category-summary-action.sigap-action {
+  @apply min-h-11 px-2 py-2 text-body-medium text-accent-600 bg-transparent;
+  white-space:nowrap;
+}
+.category-summary-table .category-summary-action.sigap-action > span { white-space:nowrap; }
+.category-summary-table .category-selected,.category-summary-table .category-selected:hover { @apply bg-background-tertiary-default; }
+.category-summary-card > .note { @apply pt-4 text-caption-1-medium; }
+.table-scroll,.recap-table-wrapper { @apply rounded-2xl border-border-button-default; }
+.badge,.status-badge { @apply rounded-md px-2 py-1 text-caption-1-medium; }
+.badge.sigap-status { @apply bg-background-secondary-default text-text-secondary; }
+.badge.sigap-status[data-tone="yellow"] { @apply bg-status-yellow-background text-status-yellow-text; }
+.badge.sigap-status[data-tone="lime"] { @apply bg-status-lime-background text-status-lime-text; }
+.badge.sigap-status[data-tone="rose"] { @apply bg-status-rose-background text-status-rose-text; }
+.offline-page { @apply py-6; }
+.offline-reports { @apply p-6; }
+.offline-report-item { @apply rounded-2xl border-border-button-default p-4; }
+.chat-composer,.chat-input-container { @apply rounded-2xl border-border-button-default bg-background-primary-default; box-shadow:var(--shadow-card); }
+.modal,.dialog { @apply rounded-3xl border-border-button-default bg-background-primary-default; }
+/* Tailwind's reset clears the native dialog's auto margins. Restore centering. */
+dialog.dialog { margin:auto; }
+.toast {
+  @apply rounded-2xl border border-border-button-default bg-background-primary-default text-text-primary p-4;
+  top:auto; bottom:24px; inset-inline-start:auto; inset-inline-end:24px; transform:none;
+  max-width:min(440px,calc(100vw - 32px)); box-shadow:var(--shadow-lg);
+}
+.toast .sigap-action { @apply text-text-secondary bg-background-secondary-default; }
+
+@media(max-width:760px){
+  .app-header { @apply px-4 py-3 gap-3; }
+  .header-right-status-group { @apply w-full justify-start gap-2; }
+  .header-right-status-group .figma-pill-white,.brand-subtitles,.brand-vertical-divider { display:none; }
+  .header-right-status-group .figma-pill-navy { margin-inline-start:auto; }
+  .header-right-status-group .figma-pill-navy > span:not(.officer-avatar) { display:none; }
+  .header-right-status-group .button,.header-right-status-group a { @apply text-caption-1-medium px-2; }
+  .app-header .sigap-navigation .sigap-nav-button { @apply min-w-0 px-1 text-caption-1-medium; }
+  .app-header .sigap-navigation { @apply justify-start; }
+  .sigap-pill-tabs { flex-wrap:nowrap; overflow-x:auto; }
+  .sigap-pill-tabs button { @apply flex-auto px-2; }
+  .sigap-pill-tabs button [class*="text-body"] { @apply text-caption-1-medium; }
+  .task-card,.offline-reports { @apply p-4; }
+  .auth-main { @apply p-6; }
+}
+@media(prefers-reduced-motion:reduce){
+  .sigap-action,.sigap-pill-tabs *, .sigap-navigation * { transition:none!important; animation:none!important; }
+}

@@ -5,6 +5,40 @@ async function workspace(page:Page,records:unknown[]=[record,other]){let seq=0;c
 test('task opens the missing field and corrections retain zero, family counts and 48-hour stock',async({page})=>{
  await workspace(page);await page.getByRole('button',{name:'Lengkapi data',exact:true}).click();const dialog=page.getByRole('region',{name:'Halaman klarifikasi posko',exact:true});await expect(dialog.getByRole('form',{name:'Form klarifikasi'})).toBeVisible();await dialog.getByRole('spinbutton',{name:'Jumlah KK',exact:true}).fill('21');await dialog.getByRole('spinbutton',{name:'Bayi/balita',exact:true}).fill('0');await dialog.getByRole('group',{name:'Bagian formulir klarifikasi'}).getByRole('button',{name:'Kebutuhan & stok',exact:true}).click();await dialog.getByLabel('Stok air bersih',{exact:true}).fill('0');await dialog.getByLabel('Waktu stok air bersih',{exact:true}).fill('2026-10-29T08:15');await dialog.getByLabel('Periode stok air bersih (jam)',{exact:true}).fill('48');let payload:any;await page.route('**/api/sessions/*/messages',r=>{payload=r.request().postDataJSON();return r.fulfill({status:409,json:{error:{message:'Tunggu proses sebelumnya.'}}});});await dialog.getByRole('button',{name:'Validasi perubahan'}).click();await expect.poll(()=>payload?.correction?.changes?.totalFamilies).toBe(21);expect(payload.correction.target.batch_id).toBe('stored-b');expect(payload.correction.changes.toddler).toBe(0);expect(payload.correction.changes.stock.air_liter_per_hari).toBe(0);expect(payload.correction.changes.stockContext.air_liter_per_hari.horizon_hours).toBe(48);await expect(dialog.getByRole('alert')).toContainText('Tunggu proses sebelumnya');
 });
+test('tab formulir yang digulir melewati header tetap berada di bawah navigasi utama',async({page})=>{
+ await workspace(page);await page.getByRole('button',{name:'Lengkapi data',exact:true}).click();
+ const tabs=page.getByRole('group',{name:'Bagian formulir klarifikasi'});
+ await expect(tabs).toBeVisible();
+ const probes=await tabs.evaluate(el=>{
+  const header=document.querySelector<HTMLElement>('.app-header')!,nav=document.querySelector<HTMLElement>('.sigap-navigation')!;
+  const bounds=el.getBoundingClientRect(),n=nav.getBoundingClientRect();
+  window.scrollBy(0,bounds.top+bounds.height/2-(n.top+n.height/2));
+  const h=header.getBoundingClientRect();
+  return Array.from(el.querySelectorAll('button')).map(button=>{
+   const b=button.getBoundingClientRect(),x=b.x+b.width/2,y=b.y+b.height/2;
+   return {insideHeader:y>=h.top&&y<h.bottom,headerOnTop:!!document.elementFromPoint(x,y)?.closest('.app-header')};
+  });
+ });
+ expect(probes.some(p=>p.insideHeader)).toBe(true);
+ expect(probes.filter(p=>p.insideHeader).every(p=>p.headerOnTop)).toBe(true);
+ await page.getByRole('navigation',{name:'Navigasi utama'}).getByRole('button',{name:'Laporan',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Laporan & Percakapan'})).toBeVisible();
+});
+test('klarifikasi yang sudah dibuka tetap dapat menyimpan draf saat jaringan putus',async({page,context})=>{
+ await workspace(page);
+ await page.getByRole('button',{name:'Simpan rekap untuk offline'}).click();
+ await expect(page.getByText('Rekap tersedia di Catatan offline.',{exact:false})).toBeVisible();
+ await page.getByRole('button',{name:'Lengkapi data',exact:true}).click();
+ const form=page.getByRole('form',{name:'Form klarifikasi'});
+ await context.setOffline(true);
+ await form.getByRole('spinbutton',{name:'Jumlah KK',exact:true}).fill('24');
+ await form.getByRole('button',{name:'Simpan draf di perangkat'}).click();
+ await expect(page.getByText('Draf tersimpan di antrean perangkat.',{exact:false})).toBeVisible();
+ await context.setOffline(false);
+ await page.goto('/offline');
+ await expect(page.getByText('1 laporan di perangkat')).toBeVisible();
+ await expect(page.getByRole('button',{name:'Klarifikasi Posko Harapan · Desa B'})).toBeVisible();
+});
 test('draft stays with its server identity when closing and opening another same-name shelter',async({page})=>{
  await workspace(page);await page.getByRole('button',{name:'Lengkapi data',exact:true}).click();const dialog=page.getByRole('region',{name:'Halaman klarifikasi posko',exact:true});await dialog.getByRole('spinbutton',{name:'Jumlah KK',exact:true}).fill('24');await dialog.getByRole('button',{name:'Kembali',exact:true}).click();await page.getByRole('button',{name:'Laporan',exact:true}).click();if((await page.viewportSize())!.width<=760)await page.getByRole('button',{name:/Hasil pemeriksaan/}).click();await page.getByLabel('Pilih posko pratinjau').selectOption({label:'Posko Harapan · Desa A'});await page.getByRole('button',{name:'Periksa & klarifikasi Posko Harapan',exact:true}).click();if(await dialog.getByRole('button',{name:'Tulis klarifikasi'}).count())await dialog.getByRole('button',{name:'Tulis klarifikasi'}).click();await expect(dialog.getByRole('spinbutton',{name:'Jumlah KK',exact:true})).toHaveValue('20');await dialog.getByRole('button',{name:'Kembali',exact:true}).click();await page.getByRole('button',{name:'Tugas',exact:true}).click();await page.getByRole('button',{name:'Lengkapi data',exact:true}).click();await expect(dialog.getByRole('spinbutton',{name:'Jumlah KK',exact:true})).toHaveValue('24');
 });

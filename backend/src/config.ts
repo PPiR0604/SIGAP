@@ -5,7 +5,7 @@ import { randomBytes } from 'node:crypto';
 import { logger } from './logging.js';
 
 const configSchema = z.object({
-  agentProvider: z.enum(['gemini', 'openai', 'bob', 'mock']).default('gemini'),
+  agentProvider: z.enum(['gemini', 'openai', 'watsonx', 'bob', 'mock']).default('gemini'),
   host: z.string().default('127.0.0.1'),
   port: z.coerce.number().default(8787),
   allowedOrigins: z.array(z.string()).default(['http://127.0.0.1:5173', 'http://localhost:5173']),
@@ -24,7 +24,7 @@ const configSchema = z.object({
 export type AppConfig = Omit<z.infer<typeof configSchema>, 'agentProvider'|'authRedirectUrl'> & {
   authRedirectUrl?:string;
   supabase?: import('./supabase/client.js').SupabaseSettings;
-  agentProvider?: 'gemini' | 'openai' | 'bob' | 'mock';
+  agentProvider?: 'gemini' | 'openai' | 'watsonx' | 'bob' | 'mock';
   sessionToken: string;
 };
 

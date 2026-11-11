@@ -1,4 +1,4 @@
-# Python and test caches
+﻿# Python and test caches
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -27,6 +27,7 @@ test-results-user-validation/
 # Local secrets and runtime state
 .env
 .env.*
+.sigap-local-accounts.txt
 !.env.example
 output/*
 !output/.gitkeep
@@ -36,9 +37,13 @@ backend/output/*
 *.log
 backend/data/*
 !backend/data/.gitkeep
+backend/supabase/.temp/
 AGENTS.md
-docs/*
-!docs/UX_REDESIGN.md
+PROJECT_CONTEXT.md
+.mcp.json
+docs/
+ref/
+tmp/
 
 # OS files
 Thumbs.db

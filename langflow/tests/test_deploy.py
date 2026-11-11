@@ -34,6 +34,17 @@ class ConfigTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             Settings.from_env(dict(debug, RENDER='true'))
 
+    def test_internal_callback_requires_explicit_local_mode_and_exact_origin(self):
+        env = {'LANGFLOW_API_KEY': 'a' * 40, 'LANGFLOW_SUPERUSER_PASSWORD': 'b' * 32,
+               'LANGFLOW_SECRET_KEY': 'c' * 40, 'SIGAP_BACKEND_INTERNAL_URL': 'http://backend:8787',
+               'SIGAP_MCP_ALLOW_LOCAL_BACKEND': '1', 'SIGAP_DEPLOYMENT_MODE': 'local'}
+        self.assertEqual(Settings.from_env(env).backend, 'http://backend:8787')
+        for changes in ({'SIGAP_DEPLOYMENT_MODE': 'cloud'}, {'SIGAP_MCP_ALLOW_LOCAL_BACKEND': '0'},
+                        {'RENDER': 'true'}, {'SIGAP_BACKEND_INTERNAL_URL': 'http://backend:8787/path'},
+                        {'SIGAP_BACKEND_INTERNAL_URL': 'http://backend:8788'}):
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                Settings.from_env(dict(env, **changes))
+
     def test_secure_exports_have_exact_expected_endpoints(self):
         flows = validate_flows(settings().flows_dir)
         self.assertEqual({f['endpoint_name'] for f in flows}, set(TOOLS))

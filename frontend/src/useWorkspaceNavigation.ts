@@ -1,7 +1,7 @@
 import {useCallback,useEffect,useState} from 'react';
-type MainPage='Tugas'|'Laporan'|'Rekap'|'Buletin';
+type MainPage='Tugas'|'Laporan'|'Rekap'|'Buletin'|'Konflik';
 export type Page=MainPage|'Klarifikasi';
-export const pages:MainPage[]=['Tugas','Laporan','Rekap','Buletin'];
+export const pages:MainPage[]=['Tugas','Laporan','Rekap','Buletin','Konflik'];
 const read=()=>{const url=new URL(location.href),value=url.searchParams.get('view');return {page:(value==='Klarifikasi'||pages.includes(value as MainPage)?value:'Tugas') as Page,shelterKey:url.searchParams.get('posko')};};
 export function useWorkspaceNavigation(){
  const [route,update]=useState(read);

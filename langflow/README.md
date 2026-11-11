@@ -2,6 +2,8 @@
 
 Langflow menjalankan workflow yang dipanggil backend melalui MCP. Instalasi Supabase saat ini menggunakan **tujuh export di [`flows/supabase/`](flows/supabase/)**, bukan export lokal SQLite di `flows/`.
 
+Untuk demo lokal dari clone baru, gunakan [installer Docker](../deployment/local/README.md); impor manual di bawah ditujukan untuk instalasi terpisah/cloud.
+
 | Flow | Fungsi |
 | --- | --- |
 | `fetch_shelters` | Membaca rekap dan mengembalikan referensi sumber |
@@ -11,6 +13,10 @@ Langflow menjalankan workflow yang dipanggil backend melalui MCP. Instalasi Supa
 | `flag_anomalies` | Memeriksa anomali laporan |
 | `upsert_shelter` | Menulis perubahan yang telah disetujui |
 | `draft_bulletin` | Menyusun draf buletin |
+
+Nama MCP yang dipakai runtime adalah `sigap_0_fetch_shelters` sampai `sigap_6_draft_bulletin`, sesuai [pemetaan backend](../backend/src/acp/toolNames.ts). Nama flow yang spesifik membantu model memilih operasi yang sesuai.
+
+Tool analisis `analyze_shelter_needs` berada di backend dan mengomposisi flow pembacaan/perhitungan di atas. Tool ini tidak menambah flow Langflow kedelapan atau menyatukan semua proses ke satu flow. Scope sumber dan hasil kalkulasi tetap diverifikasi sebelum ditampilkan.
 
 ## Setup
 

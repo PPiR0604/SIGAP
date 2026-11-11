@@ -1,5 +1,6 @@
+import {IconButton} from '@/components/base/buttons/icon-button';
 import {useEffect,useId,useRef,useState,type ReactNode,type KeyboardEvent} from 'react';
-import {Info,FileSearch} from 'lucide-react';
+import {RiInformationLine,RiFileSearchLine} from '@remixicon/react';
 
 /** Native popovers stay above scrolling panels and modal dialogs. */
 export function HelpTip({label,children,source=false}:{label:string;children:ReactNode;source?:boolean}){
@@ -19,12 +20,12 @@ export function HelpTip({label,children,source=false}:{label:string;children:Rea
  function escape(e:KeyboardEvent){if(e.key==='Escape'&&panel.current?.matches(':popover-open')){e.preventDefault();e.stopPropagation();hide();}}
  useEffect(()=>{window.addEventListener('sigap-page-changed',hide);return()=>{cancelTimer();window.removeEventListener('sigap-page-changed',hide);};},[]);
  useEffect(()=>{if(!open)return;window.addEventListener('resize',position);window.addEventListener('scroll',position,true);return()=>{window.removeEventListener('resize',position);window.removeEventListener('scroll',position,true);};},[open]);
- const Icon=source?FileSearch:Info;
+ const Icon=source?RiFileSearchLine:RiInformationLine;
  return <div className="help-tip" onKeyDown={escape}>
-  <button ref={button} type="button" className="help-tip-button" aria-label={label} aria-expanded={open} aria-controls={id} aria-describedby={open?id:undefined}
+  <IconButton icon={Icon} size="small" ref={button} type="button" className="help-tip-button" aria-label={label} aria-expanded={open} aria-controls={id} aria-describedby={open?id:undefined}
    onPointerEnter={e=>{if(e.pointerType==='mouse')show();}} onPointerLeave={leave} onFocus={show}
    onBlur={e=>{if(!panel.current?.contains(e.relatedTarget as Node))hide();}}
-   onClick={()=>{if(pinned.current)hide();else{pinned.current=true;show();}}}><Icon size={16} aria-hidden="true"/></button>
+   onClick={()=>{if(pinned.current)hide();else{pinned.current=true;show();}}}/>
   <div ref={panel} id={id} popover="auto" role="tooltip" className="help-tip-content" onToggle={()=>{const visible=!!panel.current?.matches(':popover-open');setOpen(visible);if(!visible)pinned.current=false;}}
    onPointerEnter={cancelTimer} onPointerLeave={leave} onKeyDown={escape}
    onBlur={e=>{if(!panel.current?.contains(e.relatedTarget as Node)&&e.relatedTarget!==button.current)hide();}}>

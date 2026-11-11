@@ -14,7 +14,7 @@ export const test = base.extend<{ app: Page }>({
     const connected = page.waitForResponse(response => response.url().endsWith('/api/sessions') && response.ok());
     await page.goto('/');
     await connected;
-    await expect(page.getByRole('button', { name: 'Backend Mock', exact: true })).toBeVisible();
+    await expect.poll(async () => (await (await page.request.get('/api/health')).json()).mode).toBe('mock_mode');
     await page.getByRole('navigation',{name:'Navigasi utama'}).getByRole('button',{name:'Laporan',exact:true}).click();
     await expect(composer(page)).toBeVisible();
     await use(page);

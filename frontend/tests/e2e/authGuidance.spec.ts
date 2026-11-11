@@ -7,6 +7,12 @@ test.beforeEach(async({page})=>{
   await expect(page.getByRole('heading',{name:'Masuk ke SIGAP'})).toBeVisible();
 });
 
+test('login tidak menampilkan kredensial akun atau mengisi otomatis akun juri',async({page})=>{
+  await expect(page.getByRole('region',{name:'Akses cepat akun admin untuk juri'})).toHaveCount(0);
+  await expect(page.getByLabel('Email',{exact:true})).toHaveValue('');
+  await expect(page.getByLabel('Kata sandi',{exact:true})).toHaveValue('');
+});
+
 test('mode switch responds without losing input on desktop and mobile',async({page})=>{
   await expect(page.getByRole('heading',{name:'Masuk ke SIGAP'})).toBeVisible();
   await page.getByLabel('Email',{exact:true}).fill('petugas@example.test');

@@ -1,4 +1,4 @@
-import {test,expect} from './fixtures';
+import {test,expect,recapRows} from './fixtures';
 
 test('klarifikasi desa memakai target server walau nama desa berubah dan posko lain bernama sama',async({page})=>{
   const oldBatch='a'.repeat(32),newBatch='b'.repeat(32);
@@ -15,7 +15,7 @@ test('klarifikasi desa memakai target server walau nama desa berubah dan posko l
   let message='';
   await page.route('**/api/sessions/*/messages',r=>{message=r.request().postDataJSON().text;sent=true;return r.fulfill({status:202,json:{batch_id:newBatch,status:'accepted',pii_summary:{totalRedacted:0}}});});
   await page.goto('/?view=Laporan');await page.getByRole('button',{name:'Rekap',exact:true}).click();
-  await expect(page.getByRole('region',{name:'Tabel rekap posko',exact:true}).locator('tbody tr')).toHaveCount(2);
+  await expect(recapRows(page)).toHaveCount(2);
   await page.getByRole('button',{name:'Posko Harapan',exact:true}).first().click();
   const dialog=page.getByRole('region',{name:'Halaman klarifikasi posko',exact:true});
   if(await dialog.getByRole('button',{name:'Tulis klarifikasi'}).count())await dialog.getByRole('button',{name:'Tulis klarifikasi'}).click();
@@ -38,10 +38,10 @@ test('klarifikasi desa memakai target server walau nama desa berubah dan posko l
   await expect(dialog.getByRole('button',{name:'Tulis klarifikasi'})).toBeEnabled();
   expect(message).toContain(`laporan R002 (Posko Harapan) batch ${oldBatch}`);
   await dialog.getByRole('button',{name:'Kembali',exact:true}).click();
-  await expect(page.getByRole('region',{name:'Tabel rekap posko',exact:true}).locator('tbody tr')).toHaveCount(2);
-  await expect(page.getByRole('region',{name:'Tabel rekap posko',exact:true}).locator('tbody tr').first()).toContainText('Cibineng');
-  await expect(page.getByRole('region',{name:'Tabel rekap posko',exact:true}).locator('tbody tr').nth(1)).toContainText('Sukamaju');
-  await expect(page.getByRole('region',{name:'Tabel rekap posko',exact:true}).locator('tbody tr').nth(1)).toContainText('popok');
+  await expect(recapRows(page)).toHaveCount(2);
+  await expect(recapRows(page).first()).toContainText('Cibineng');
+  await expect(recapRows(page).nth(1)).toContainText('Sukamaju');
+  await expect(recapRows(page).nth(1)).toContainText('popok');
   await page.getByRole('button',{name:'Tinjau & setujui',exact:true}).click();
   const summary=page.getByRole('region',{name:'Ringkasan perubahan',exact:true});await expect(summary).toContainText('Nama posko');await expect(summary).toContainText('Desa belum diketahui');await expect(summary).toContainText('Cibineng');await expect(summary).toContainText('selimut, sabun');
   expect(writes).toBe(0);

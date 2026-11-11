@@ -1,59 +1,140 @@
-# SIGAP — Sistem Intelijen Logistik dan Asisten Posko
+﻿# SIGAP — Sistem Intelijen Logistik dan Asisten Posko
 
-SIGAP membantu petugas membaca laporan posko, memeriksa ketidaksesuaian, menghitung acuan kebutuhan dasar dan menyusun buletin. Hasil OCR dan ekstraksi AI harus diperiksa; perubahan tersimpan setelah persetujuan petugas dan verifikasi baca ulang.
+SIGAP membantu petugas pos komando mengubah laporan lapangan (chat WhatsApp, unggahan CSV, hingga dokumen fisik/OCR) menjadi data terstruktur, memeriksa kelengkapan serta konfliknya, menghitung acuan kebutuhan dasar berbasis standar kemanusiaan Sphere 2018, dan menyusun buletin logistik. Proyek ini ditujukan untuk relawan, petugas pendataan, koordinator logistik, dan pimpinan pos komando.
 
-## Arsitektur saat ini
+AI membantu pemahaman maksud pesan, ekstraksi informasi, dan pemilihan tool. Validasi, perhitungan numerik, otorisasi, dan persetujuan penyimpanan tetap dijalankan secara deterministik dan diperiksa oleh sistem (**Human-in-the-Loop**). Keputusan distribusi bantuan sepenuhnya berada pada petugas dan pihak berwenang.
 
-```text
-Petugas → Web React → Backend Fastify → model percakapan/ekstraksi
-                          │
-                          ├─ MCP → Langflow: validasi, perhitungan, rekap dan buletin
-                          └─ Supabase Auth + gateway → database Supabase
+---
+
+## Panduan Cepat
+
+| Tujuan | Panduan |
+| :--- | :--- |
+| Setup Docker + Supabase lokal (satu perintah) | [Setup Docker dan Supabase lokal](deployment/local/README.md) |
+| Konfigurasi layanan Backend & API | [Dokumentasi Backend](backend/README.md) |
+| Antarmuka Web, BoardUI & Mode Offline | [Dokumentasi Frontend](frontend/README.md) |
+| Konfigurasi 7 Flow MCP Langflow & Sphere | [Dokumentasi Langflow](langflow/README.md) |
+
+---
+
+## 1. Menjalankan Demo Lokal (Docker + Supabase Lokal)
+
+Siapkan Docker Desktop atau Docker Engine dengan Compose, koneksi internet untuk setup awal dan panggilan model AI, serta kredensial provider model (seperti IBM watsonx.ai atau endpoint OpenAI-compatible). Jalankan dari root repositori:
+
+**Windows PowerShell:**
+```powershell
+.\start-sigap.ps1
 ```
 
-Model tidak mendapat izin menyimpan secara mandiri. Backend membatasi akses, mengikat persetujuan ke kandidat dan memeriksa hasil penyimpanan. Flow Supabase menggunakan capability terbatas dari backend; kredensial tidak dikirim ke model. Provider OpenAI-compatible dan Gemini didukung. Adapter Bob tersedia, tetapi jalur Bob dengan autentikasi Supabase masih fail-closed; jangan mengklaim integrasi Bob end-to-end tanpa pengujian terpisah.
+**Linux / macOS:**
+```bash
+bash ./start-sigap.sh
+```
 
-## Fitur
+Installer akan menyiapkan seluruh stack secara otomatis (PostgreSQL/Supabase lokal, GoTrue Auth, PostgREST, Edge Gateway, Mailpit, Backend Fastify, Frontend React, dan Langflow), akun latihan di `.sigap-local-accounts.txt`, serta 8 data posko sintetis awal (630 jiwa).
 
-- **Tugas:** pekerjaan pemeriksaan dan klarifikasi posko.
-- **Laporan:** chat, unggahan TXT/CSV, OCR dokumen PDF/JPG/PNG dan tempel gambar di kotak chat. Hasil OCR harus ditinjau sebelum dikirim. TXT/CSV maksimal 200 KiB; PDF/gambar maksimal 5 MiB dan PDF maksimal 5 halaman.
-- **Rekap:** daftar, pencarian, filter, detail per posko, konflik, koreksi, keputusan persetujuan dan ekspor CSV. Kosong berarti belum diketahui; nol adalah nilai yang dilaporkan.
-- **Kebutuhan:** acuan air, energi pangan, jamban dan ruang hunian dihitung di Langflow. Kekurangan hanya tersedia bila stok dan metadata memenuhi syarat. Alokasi kelompok usia merupakan acuan populasi, bukan kebutuhan gizi spesifik individu; lihat [batas perhitungan](langflow/SPHERE_PLANNING.md).
-- **Buletin:** draf berbasis sumber yang ditinjau; admin dapat menyetujui dan membagikan tautan publik. Pembaca tautan publik tidak memerlukan akun.
+Setelah verifikasi selesai, akses antarmuka di **`http://localhost:8080`**.
 
-## Menjalankan proyek
+Perintah manajemen stack lokal:
+```powershell
+.\start-sigap.ps1 status   # Cek status seluruh container
+.\start-sigap.ps1 verify   # Verifikasi koneksi dan skema lokal
+.\start-sigap.ps1 stop     # Hentikan container (data tetap tersimpan)
+.\start-sigap.ps1 reset -ConfirmLocalReset  # Reset data lokal
+```
 
-Prasyarat: Docker Compose; proyek Supabase yang dikonfigurasi untuk SIGAP; Langflow dengan flow Supabase; dan akses model sesuai provider. Node.js 22 diperlukan untuk pengembangan tanpa Docker.
+Lihat [panduan setup lokal lengkap](deployment/local/README.md) untuk opsi pergantian provider AI, port layanan, dan pemecahan masalah.
 
-1. Salin `.env.example` menjadi `.env` di root, lalu isi konfigurasi Supabase, gateway, organisasi, model dan MCP. Jangan commit `.env` atau kredensial.
-2. Siapkan schema, organisasi, HMAC gateway dan akun administrator sesuai [panduan Supabase](backend/AUTH_SUPABASE.md) dan [komando](backend/COMMAND_WORKSPACES.md). Jangan menjalankan file bootstrap tes terhadap database produksi.
-3. Impor tujuh flow dari [`langflow/flows/supabase/`](langflow/flows/supabase/) ke Langflow, aktifkan MCP, dan atur `SIGAP_BACKEND_INTERNAL_URL` pada proses Langflow agar dapat menghubungi backend. Lihat [panduan Langflow](langflow/README.md).
-4. Atur `LANGFLOW_MCP_URL`, `LANGFLOW_API_KEY` dan provider model di `.env`. Untuk registrasi tanpa tautan verifikasi, nonaktifkan **Confirm email** pada Supabase Auth; pengaturan tersebut adalah pilihan deployment dan memiliki konsekuensi pada verifikasi kepemilikan email.
-5. Jalankan `docker compose up -d --build`. Buka `http://localhost:5173`; backend berada pada port 8787. Backend container menggunakan `host.docker.internal` untuk layanan lokal host yang relevan.
+---
 
-Konfigurasi production memerlukan Supabase. Mode mock dan SQLite memori terutama untuk fixture/test; bukan fallback diam-diam bagi koneksi produksi. Status health menunjukkan kesiapan konfigurasi, bukan bukti seluruh alur berhasil.
+## 2. Fitur Utama
 
-## Pengujian
+| Fitur | Deskripsi |
+| :--- | :--- |
+| **Tugas** | Mendeteksi data posko yang perlu diperiksa, diverifikasi, atau dilengkapi oleh petugas. |
+| **Laporan & OCR** | Input percakapan, impor TXT/CSV (maks. 200 KiB), serta pemindaian OCR dokumen PDF/JPG/PNG (maks. 5 MiB, PDF maks. 5 halaman) dengan peninjauan teks sebelum diproses AI. |
+| **Klarifikasi & Konflik** | Memeriksa sumber asli, mengoreksi angka secara terstruktur, membandingkan kandidat dengan nilai tersimpan, serta menangani data kosong/inkonsisten. |
+| **Kalkulasi Sphere 2018** | Perhitungan deterministik acuan kebutuhan air (15 L/jiwa/hari), energi pangan (2.100 kkal/jiwa/hari), jamban, ruang hunian, dan rincian kelompok usia di Langflow; lihat [asumsi dan batasan Sphere](langflow/SPHERE_PLANNING.md). |
+| **Rekap & Analisis Chat** | Pencarian posko, filter kebutuhan, detail per posko, ekspor CSV, serta tool baca-saja `analyze_shelter_needs` untuk analisis peringkat kebutuhan langsung dari hasil kalkulator. |
+| **Persetujuan & Read-Back** | Penulisan ke database wajib melalui persetujuan eksplisit petugas di UI terikat hash snapshot SHA-256 dan diverifikasi melalui baca ulang (*read-back*). |
+| **Buletin & Tautan Publik** | Penyusunan draf buletin kebutuhan berbasis rekap tervalidasi serta penerbitan tautan publik statis bertoken dengan persetujuan admin. |
+| **Mode Offline (PWA)** | Penyimpanan draf laporan dan salinan rekap di perangkat (`IndexedDB` + *Service Worker*) saat koneksi terputus, untuk dikirim ulang secara manual ketika online. |
+
+---
+
+## 3. Arsitektur Sistem
+
+```text
+Petugas -> Web React (BoardUI) -> Backend Fastify -> AI Model memilih tool
+                                       │                    │
+                                       │ <──────────────────+
+                                       ├─> MCP (uvx/HTTP) -> Langflow (7 Flow Modular)
+                                       ├─> Supabase Auth + Gateway HMAC -> PostgreSQL + RLS
+                                       └─> Validasi snapshot, persetujuan HITL, & read-back
+```
+
+### Pembagian Peran Komponen
+- **Web React (`frontend/`)**: Antarmuka workspace (*Tugas → Laporan → Rekap → Buletin*), komponen BoardUI, tinjauan OCR, klarifikasi berdampingan, mode offline (`IndexedDB`), dan buletin publik.
+- **Backend Fastify (`backend/`)**: Manajemen sesi, otorisasi peran (`admin`, `petugas`, `viewer`), penyaringan data pribadi otomatis (*PII redaction*), orkestrasi SSE *real-time*, tool analisis baca-saja [`analyze_shelter_needs`](backend/src/pipeline/analysisTool.ts), dan gerbang persetujuan penulisan.
+- **Langflow MCP Engine (`langflow/`)**: Menjalankan 7 flow modular (`fetch_shelters`, `prepare_needs`, `validate_needs`, `calculate_gap`, `flag_anomalies`, `upsert_shelter`, `draft_bulletin`) melalui MCP (`sigap_0_fetch_shelters` s/d `sigap_6_draft_bulletin`).
+- **Provider Model AI**: Mendukung runtime **IBM watsonx.ai**, endpoint lokal **OpenAI-compatible**, **Google Gemini**, serta adapter **IBM Bob** (MCP/ACP).
+
+---
+
+## 4. Pengembangan & Pengujian (Tanpa Docker Lokal)
+
+Untuk pengembangan native atau deployment cloud menggunakan `.env` root (lihat [`.env.example`](.env.example)), [panduan Supabase](backend/AUTH_SUPABASE.md), dan [ruang operasi](backend/COMMAND_WORKSPACES.md).
+
+**Persyaratan**: Node.js 22+ dan Python 3.10+.
 
 ```powershell
+# 1. Backend Fastify: build & unit/integration tests
 cd backend
 npm ci
 npm run build
 npm test
+
+# 2. Frontend React: build (termasuk offline shell), unit tests, & E2E Playwright
 cd ../frontend
 npm ci
 npm run build
 npm test
 npx playwright install chromium
 npm run test:e2e
+
+# Uji mode offline setelah build
+npx playwright test --config playwright.offline.config.ts
+
+# 3. Pengujian komponen Python Langflow
+cd ..
+python -m pytest langflow/tests -q
 ```
 
-Tes browser default memakai server dan fixture terisolasi; baca [panduan tes](frontend/tests/e2e/README.md). Uji Langflow Playground → MCP → runtime → alur end-to-end secara terpisah pada lingkungan uji; hasil tes mock tidak membuktikan integrasi live.
+Untuk panduan testing lebih rinci, lihat [panduan E2E browser](frontend/tests/e2e/README.md) dan [panduan uji live](frontend/tests/live/README.md).
 
-## Dokumentasi dan keamanan
+---
 
-- [Backend](backend/README.md) · [Frontend](frontend/README.md) · [Langflow](langflow/README.md)
-- [Panduan autentikasi dan deployment](backend/AUTH_SUPABASE.md) · [Ruang operasi](backend/COMMAND_WORKSPACES.md)
-- [Data sintetis untuk uji pengguna](data/synthetic/user-validation/README.md) · [sampel OCR](data/synthetic/ocr/README.md)
+## 5. Struktur Direktori
 
-Simpan password database, secret gateway, API key, backup, token dan data pengguna di luar repo. `.gitignore` tidak menghapus rahasia yang sudah pernah di-commit. Gunakan data sintetis untuk demo publik dan periksa riwayat Git sebelum publikasi.
+```text
+├── .env.example             # Template konfigurasi tunggal (cloud & model)
+├── docker-compose.yml       # Orkestrasi deployment mode cloud
+├── docker-compose.local.yml # Orkestrasi stack lengkap + Supabase lokal
+├── start-sigap.ps1          # Skrip runner one-click Windows PowerShell
+├── start-sigap.sh           # Skrip runner one-click Linux/macOS
+├── backend/                 # Layanan backend Fastify, Auth, OCR, Supabase & MCP client
+├── frontend/                # Web Workspace React + Vite + BoardUI + Mode Offline
+├── langflow/                # 7 Flow MCP Langflow (Supabase & SQLite), komponen & deployment Vercel
+├── deployment/local/        # Setup otomatis Supabase lokal, gateway Nginx, skema & seed data
+├── mcp/                     # Konfigurasi & instruksi agen MCP (Bob / Gemini / OpenAI)
+├── integrations/            # Skrip webhook Google Apps Script (Sheets & Docs)
+├── data/                    # Dataset sintetis, paket uji pengguna, sampel OCR & studi banding manual
+├── dokumentasi-proyek/      # Tangkapan layar aplikasi dan integrasi
+└── output/                  # Folder keluaran lokal (diabaikan Git)
+```
+
+---
+
+## 6. Keamanan Data
+
+Simpan API key, kata sandi database, secret gateway HMAC, token, dan file `.env` / `.env.sigap-local` / `.sigap-local-accounts.txt` di luar Git. Jangan mengirim secret gateway ke frontend atau model AI. Gunakan data sintetis di [`data/synthetic/`](data/synthetic/) untuk pengujian atau demonstrasi publik.

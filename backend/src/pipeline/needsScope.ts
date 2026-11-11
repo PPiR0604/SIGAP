@@ -1,11 +1,6 @@
 import { parseGapResult } from './toolResults.js';
 
 export type SnapshotScope = { snapshot_id:string; snapshot_sha256:string; records:any[]; kind:'stored'|'candidate' };
-export function isAllNeedsRequest(text:string):boolean {
-  if (/^\s*(?:kenapa|mengapa|jangan|tidak\s+(?:perlu|usah))\b/i.test(text)||/\b(?:buletin|bulletin)\b/i.test(text)) return false;
-  return /\b(?:semua|semuanya|seluruh|seluruhnya|keseluruhan|setiap|tiap)\b/i.test(text) && /\b(?:kebutuhan|kekurangan|butuh|gap|logistik|stok)\b/i.test(text);
-}
-export const storedNeedsOnly=(text:string)=>/\btersimpan\b/i.test(text)&&!/\b(?:kandidat|pratinjau|belum\s+(?:tersimpan|disimpan))\b/i.test(text);
 const norm=(value:unknown)=>String(value??'').trim().toLowerCase().replace(/\s+/g,' ');
 const key=(record:any)=>JSON.stringify([norm(record.shelter_name),norm(record.village)]);
 
@@ -23,6 +18,7 @@ export async function calculateAllNeeds(scopes:SnapshotScope[], call:(reference:
       seen.add(identity);
       const matches=calculated.shelters.filter(row=>key(row)===identity);
       if(matches.length!==1)throw new Error('Posko sumber tidak cocok dengan hasil kalkulasi.');
+      if((matches[0].total_people??null)!==(record.total_people??null))throw new Error('Jumlah jiwa hasil kalkulasi tidak sesuai sumber snapshot.');
       if(record.update_target){
         const targets=[...active.entries()].filter(([,entry])=>entry.record.batch_id===record.update_target.batch_id&&entry.record.report_id===record.update_target.report_id);
         if(targets.length>1)throw new Error('Target koreksi pada seluruh rekap ambigu.');
@@ -48,5 +44,46 @@ export function renderAllNeeds(result:Awaited<ReturnType<typeof calculateAllNeed
     '| Posko | Desa | Air (L/hari) | Pangan (kkal/hari) | Jamban | Hunian (m²) | Gap air (L/hari) |', '| --- | --- | ---: | ---: | ---: | ---: | ---: |'];
   for(const row of result.shelters)lines.push(`| ${cell(row.shelter_name)} | ${cell(row.village)} | ${number(row.needs.air_liter_per_hari?.value)} | ${number(row.needs.kkal_per_hari?.value)} | ${number(row.needs.jamban_unit?.value)} | ${number(row.needs.ruang_hunian_m2?.value)} | ${number(row.gaps.air_liter_per_hari)} |`);
   lines.push('', 'Angka dihitung Langflow dari snapshot sumber. Gap tetap belum diketahui bila stok/periode belum lengkap. Tidak ada penyimpanan atau distribusi otomatis.');
+  return lines.join('\n');
+}
+
+export function renderWaterRanking(result:Awaited<ReturnType<typeof calculateAllNeeds>>):string {
+  const metric='air_liter_per_hari';
+  const number=(n:number)=>new Intl.NumberFormat('id-ID').format(n);
+  const label=(row:any)=>[row.shelter_name,row.village].filter(Boolean).join(' — ').replace(/[\r\n|]/g,' ');
+  const known=result.shelters.filter(row=>typeof row.gaps?.[metric]==='number'&&Number.isFinite(row.gaps[metric])&&row.gaps[metric]>=0)
+    .sort((a,b)=>b.gaps[metric]-a.gaps[metric]||label(a).localeCompare(label(b),'id'));
+  const unknown=result.shelters.filter(row=>!known.includes(row));
+  const positive=known.filter(row=>row.gaps[metric]>0);
+  const lines=[result.pending_candidates?'Berdasarkan rekap tersimpan dan kandidat terbaru yang belum disimpan.':'Berdasarkan seluruh rekap tersimpan.',''];
+  if(positive.length){
+    const max=positive[0].gaps[metric],leaders=positive.filter(row=>row.gaps[metric]===max);
+    lines.push(`Kekurangan air terbesar yang dapat dihitung adalah **${number(max)} L/hari**, pada **${leaders.map(label).join('; ')}**.`, '',
+      '| Posko — Desa | Kekurangan air (L/hari) |','| --- | ---: |');
+    for(const row of positive)lines.push(`| ${label(row)}${row.is_estimate?' (estimasi)':''} | ${number(row.gaps[metric])} |`);
+  }else lines.push(known.length?'Tidak ada kekurangan air positif pada posko yang gap-nya dapat dihitung.':'Belum bisa menentukan posko yang paling kekurangan air: belum ada gap air yang valid.');
+  if(known.length>positive.length)lines.push('',`Gap air nol: ${known.filter(row=>row.gaps[metric]===0).map(label).join('; ')}.`);
+  if(unknown.length)lines.push('',`**Belum dapat dibandingkan:** ${unknown.map(label).join('; ')}. Gap air belum diketahui; periksa kelengkapan dan validitas stok, waktu, serta periode stok. Data kosong tidak dianggap nol. Peringkat di atas hanya mencakup gap yang dapat dihitung.`);
+  lines.push('','Angka mengikuti hasil kalkulator Langflow dan waktu data yang tercatat. Urutan berdasarkan kekurangan liter per hari, bukan skor prioritas umum. Keputusan distribusi tetap memerlukan penilaian petugas.');
+  return lines.join('\n');
+}
+
+export function renderPriorityRanking(result:Awaited<ReturnType<typeof calculateAllNeeds>>):string {
+  const cell=(value:unknown)=>String(value??'Belum diketahui').replace(/\|/g,'\\|').replace(/[\r\n]+/g,' ');
+  const levels:Record<string,number>={TINGGI:0,SEDANG:1,RENDAH:2};
+  const ranked=result.shelters.filter(row=>Object.hasOwn(levels,row.priority)&&typeof row.score==='number'&&Number.isFinite(row.score))
+    .sort((a,b)=>levels[a.priority]-levels[b.priority]||b.score-a.score||cell(a.shelter_name).localeCompare(cell(b.shelter_name),'id'));
+  const uncertain=result.shelters.filter(row=>!ranked.includes(row));
+  const lines=[result.pending_candidates?'Berdasarkan rekap tersimpan dan kandidat terbaru yang belum disimpan.':'Berdasarkan seluruh rekap tersimpan.', '',
+    '**Usulan prioritas pemeriksaan bantuan** berdasarkan skor umum kalkulator SIGAP; bukan peringkat khusus kekurangan air atau keputusan distribusi.'];
+  if(ranked.length){
+    lines.push('','| Posko | Desa | Prioritas | Skor | Alasan |','| --- | --- | --- | ---: | --- |');
+    for(const row of ranked)lines.push(`| ${cell(row.shelter_name)}${row.is_estimate?' (estimasi)':''} | ${cell(row.village)} | ${cell(row.priority)} | ${row.score} | ${cell(row.reasons.join('; ')||'Tidak tersedia')} |`);
+  }else lines.push('','Belum dapat menyusun peringkat: tidak ada posko dengan skor dan tingkat prioritas yang dapat dipastikan.');
+  if(uncertain.length){
+    lines.push('','**Perlu klarifikasi, tidak dimasukkan ke urutan:**');
+    for(const row of uncertain)lines.push(`- ${cell(row.shelter_name)} — ${cell(row.village)} (${cell(row.priority)}): ${cell([...row.reasons,...row.issues].join('; ')||'Data belum cukup untuk memastikan prioritas.')}`);
+  }
+  lines.push('','Skor adalah heuristik SIGAP berdasarkan kebutuhan yang dilaporkan dan kelompok rentan. Data yang belum lengkap tidak berarti kebutuhan rendah. Tinjau waktu laporan dan kondisi lapangan; keputusan bantuan tetap pada petugas dan pimpinan pos komando.');
   return lines.join('\n');
 }

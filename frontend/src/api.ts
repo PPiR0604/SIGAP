@@ -1,5 +1,5 @@
 export interface HealthResponse {
-  agent?: 'gemini' | 'openai' | 'bob' | 'mock';
+  agent?: 'gemini' | 'openai' | 'watsonx' | 'bob' | 'mock';
   model?:string;
   provider_status?: 'configured' | 'unavailable' | 'simulated';
   status: string;
@@ -84,7 +84,7 @@ export async function restoreAuthSession():Promise<AuthSession|null>{
   }catch(error){if(!authSession)return null;throw error;}
 }
 export async function logout(){try{await authenticatedRequest('/api/auth/logout',{method:'POST'});}finally{clearAuthSession();}}
-export async function checkBackendHealth():Promise<HealthResponse|null>{try{const res=await fetch('/api/health');if(!res.ok)return null;const data=await res.json();if(data.session_token)setSessionToken(data.session_token);return data;}catch{return null;}}
+export async function checkBackendHealth():Promise<HealthResponse|null>{try{const res=await fetch('/api/health',{signal:AbortSignal.timeout(8000)});if(!res.ok)return null;const data=await res.json();if(data.session_token)setSessionToken(data.session_token);return data;}catch{return null;}}
 export async function ensureSessionToken():Promise<string>{if(authSession){if((authSession.expires_at??0)*1000<=Date.now()+60000)return refreshAuthToken();return activeSessionToken;}return activeSessionToken;}
 export async function fetchSessionToken():Promise<string>{await checkBackendHealth();return activeSessionToken;}
 export async function authenticatedRequest(url:string,options:RequestInit={}):Promise<any>{
@@ -96,7 +96,7 @@ export async function authenticatedRequest(url:string,options:RequestInit={}):Pr
   return parseResponse(res);
 }
 export async function createBackendSession(contextId='posko-sumedang'):Promise<SessionResponse>{return authenticatedRequest('/api/sessions',{method:'POST',body:JSON.stringify({context_id:contextId,resume:true})});}
-export async function sendBackendMessage(sessionId:string,text:string,filename?:string,correction?:unknown):Promise<MessageResponse>{return authenticatedRequest(`/api/sessions/${sessionId}/messages`,{method:'POST',body:JSON.stringify({request_id:crypto.randomUUID(),text,filename,...(correction?{correction}:{})})});}
+export async function sendBackendMessage(sessionId:string,text:string,filename?:string,correction?:unknown,requestId:string=crypto.randomUUID()):Promise<MessageResponse>{return authenticatedRequest(`/api/sessions/${sessionId}/messages`,{method:'POST',body:JSON.stringify({request_id:requestId,text,filename,...(correction?{correction}:{})})});}
 export interface DocumentExtraction {text:string;filename:string;pages:number;engine:'tesseract';source_sha256:string;warnings:string[]}
 export async function extractReportDocument(sessionId:string,file:File,signal:AbortSignal):Promise<DocumentExtraction>{
  return authenticatedRequest(`/api/sessions/${encodeURIComponent(sessionId)}/documents/extract`,{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Document-Name':encodeURIComponent(file.name)},body:file,signal});

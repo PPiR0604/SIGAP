@@ -1,3 +1,5 @@
+import {StatusBadge} from './ui/StatusBadge';
+import {ActionButton} from './ui/ActionButton';
 import { ShieldCheck, FileText } from 'lucide-react';
 import { MarkdownContent } from './MarkdownContent';
 import { bulletinForReading,bulletinTable,hasBulletinContent } from './bulletin';
@@ -41,9 +43,9 @@ export function OfficialPaper({
                 : 'Pilih Susun draf pada panel tindakan. Setelah selesai, periksa isi sebelum digunakan.'}
             </p>
           </div>
-          <button type="button" className="button quiet" onClick={onGoLaporan}>
+          <ActionButton type="button" className="button quiet" onClick={onGoLaporan}>
             Lihat jawaban Agent
-          </button>
+          </ActionButton>
         </div>
       )}
 
@@ -52,7 +54,7 @@ export function OfficialPaper({
         {/* Header Dokumen (Clean Docs: BPBD badge, Title, Subtitle, Release Time) */}
         <header className="docs-doc-header">
           <div className="docs-header-top">
-            <span className="docs-org-badge">SIGAP</span>
+            <StatusBadge className="docs-org-badge">SIGAP</StatusBadge>
             <div className="docs-title-wrap">
               <h2 className="docs-doc-title">Buletin logistik & kebutuhan pengungsi</h2>
               <p className="docs-doc-subtitle">{contextName||'Pratinjau dokumen operasi'}</p>

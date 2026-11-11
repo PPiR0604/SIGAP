@@ -1,3 +1,4 @@
+import {ActionButton} from './ui/ActionButton';
 import {useEffect,useRef,useState} from 'react';
 import {ArrowDown,ArrowRight,ChevronDown,ChevronUp,Paperclip} from 'lucide-react';
 import {ChatMarkdown} from './ChatMarkdown';
@@ -37,7 +38,7 @@ export function ChatDock({messages,input,onInput,onSend,onUpload,processing,disp
   return <section className="chat-dock" aria-label="Percakapan dengan Agent">
     <div className="chat-dock-heading">
       <div><h2>Chat dengan Agent</h2><span role="status">{processing?(statusText||'Sedang memproses…'):'Asisten laporan lapangan'}</span></div>
-      {messages.length>0&&<button type="button" className="button quiet chat-toggle" aria-label={expanded?'Ciutkan percakapan':'Buka percakapan'} aria-expanded={expanded} aria-controls="chat-dock-history" onClick={()=>setExpanded(v=>!v)}>{expanded?<>Sembunyikan<ChevronUp size={16} aria-hidden="true"/></>:<>Tampilkan ({messages.length})<ChevronDown size={16} aria-hidden="true"/></>}</button>}
+      {messages.length>0&&<ActionButton type="button" className="button quiet chat-toggle" aria-label={expanded?'Ciutkan percakapan':'Buka percakapan'} aria-expanded={expanded} aria-controls="chat-dock-history" onClick={()=>setExpanded(v=>!v)}>{expanded?<>Sembunyikan<ChevronUp size={16} aria-hidden="true"/></>:<>Tampilkan ({messages.length})<ChevronDown size={16} aria-hidden="true"/></>}</ActionButton>}
     </div>
     {messages.length===0&&!processing&&suggestions.length>0&&<div className="chat-chips" role="group" aria-label="Saran pesan">{suggestions.map(s=><button key={s.label} type="button" className="chip" onClick={()=>onSuggest?.(s.text)}>{s.label}</button>)}</div>}
     <div className="chat-dock-input">
@@ -45,9 +46,9 @@ export function ChatDock({messages,input,onInput,onSend,onUpload,processing,disp
       <div className="chat-composer">
         <textarea id="report-input" ref={composerRef} rows={3} placeholder="Tempel laporan lapangan di sini, atau tanyakan sesuatu ke Agent…" value={input} onChange={e=>onInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)&&!e.nativeEvent.isComposing){e.preventDefault();send();}}}/>
         <div className="chat-actions">
-          <button type="button" className="button quiet" onClick={onUpload} aria-label="Unggah laporan"><Paperclip size={17} aria-hidden="true"/>Unggah .txt / .csv</button>
+          <ActionButton type="button" className="button quiet" onClick={onUpload} aria-label="Unggah laporan"><Paperclip size={17} aria-hidden="true"/>Unggah .txt / .csv</ActionButton>
           <span className="chat-hint">Ctrl / ⌘ + Enter</span>
-          <button type="button" className="button primary chat-send" disabled={!input.trim()||dispatching} onClick={send}>Kirim<ArrowRight size={16} aria-hidden="true"/></button>
+          <ActionButton type="button" className="button primary chat-send" disabled={!input.trim()||dispatching} onClick={send}>Kirim<ArrowRight size={16} aria-hidden="true"/></ActionButton>
         </div>
       </div>
     </div>

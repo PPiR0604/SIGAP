@@ -610,6 +610,24 @@ def split_payload(payload: str) -> tuple[str, str]:
     try:
         obj = extract_json(payload)
         if isinstance(obj, dict):
+            if "source_request" in obj:
+                from sigap_preprocess import prepare_source
+                source_request = obj["source_request"]
+                if (set(obj) - {"source_request", "records", "include_calculation"} or
+                    "include_calculation" in obj and type(obj['include_calculation']) is not bool or
+                    "records" not in obj or
+                    not isinstance(obj["records"], list) or len(obj["records"]) != 1 or
+                    not isinstance(source_request, dict) or
+                    not isinstance(source_request.get("report_text"), str) or
+                    not any(k in source_request for k in ("candidate_target", "correction_target")) or
+                    set(source_request) - {"report_text", "candidate_target", "correction_target", "correction_base"}):
+                    raise ValueError("Perubahan terstruktur memerlukan satu laporan dan referensi sumber koreksi.")
+                prepared, _ = prepare_source(json.dumps(source_request, ensure_ascii=False))
+                marker = re.search(r"<<<SOURCE_REF>>>(.*?)<<<END_SOURCE_REF>>>", prepared, re.S)
+                if not marker:
+                    raise ValueError("Sumber koreksi terstruktur tidak dapat diverifikasi.")
+                reference = json.loads(marker[1])
+                return json.dumps({**reference, "records": obj["records"]}), ""
             if "records" in obj and "batch_id" in obj and "source_sha256" in obj:
                 return json.dumps(obj), ""
             if "records" in obj and "source_text" in obj:
@@ -680,10 +698,13 @@ class ShelterReportValidator(Component):
     ]
 
     def build_validated(self) -> Message:
+        include_calculation = False
         payload_val = getattr(self, "payload", None)
         if payload_val:
             p_text = payload_val.text if hasattr(payload_val, "text") else str(payload_val)
             try:
+                requested = extract_json(p_text)
+                include_calculation = isinstance(requested, dict) and requested.get('include_calculation') is True
                 llm_output, source_text = split_payload(p_text)
             except ValueError as exc:
                 result = {
@@ -760,5 +781,10 @@ class ShelterReportValidator(Component):
                                          "issues": result["issues"] + result["snapshot_issues"], "snapshot_issues":result["snapshot_issues"]}))
         except (OSError, ValueError) as exc:
             return Message(text=f"GAGAL: tidak dapat menyimpan snapshot validasi ({exc}). Jangan menghitung/menulis dari JSON bebas.")
+        if include_calculation and len(result['snapshot_records']) == 1 and result['snapshot_records'][0].get('shelter_name'):
+            from sigap_needs import calculate
+            calculated = calculate(json.loads(json.dumps(result['snapshot_records'])))
+            calculated.update({key:result[key] for key in ('snapshot_id','snapshot_sha256')})
+            result['validated_calculation'] = calculated
         self.status = f"{result['summary']['records_valid']} record valid, {len(result['issues'])} catatan"
         return Message(text=render(result))

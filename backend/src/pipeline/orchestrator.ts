@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import { isDeepStrictEqual } from 'node:util';
 import { canonicalToolName } from '../acp/toolNames.js';
 import type { Repository } from '../db/contract.js';
-import type { BatchRecord, ApprovalRecord } from '../db/repo.js';
+import type { BatchRecord, ApprovalRecord, SessionRecord } from '../db/repo.js';
 import type { AgentRuntime, ApplicationEvent, AgentPromptOptions, AgentSessionConfig } from '../acp/types.js';
 import { FakeAgentRuntime } from '../acp/fakeRuntime.js';
 import { parsePrepareNeedsOutput, parseSigapWriteResult, parseSigapReadResult, parseGapResult, parseBulletinResult } from './toolResults.js';
@@ -10,29 +10,32 @@ import { buildApprovedWritePayload, verifyToolExecutionAgainstGate, unwrapToolIn
 import { createEvent } from '../acp/events.js';
 import { wrapUntrustedInputForAgent } from './pii.js';
 import { logger } from '../logging.js';
-import {isCorrectionRequest,isClearlyReport,correctionInput,CorrectionTargetError} from './corrections.js';
+import {isCorrectionRequest,correctionInput,CorrectionTargetError} from './corrections.js';
 import {McpHttpClient} from '../mcp/httpClient.js';
 import {isStoredBulletinRequest} from './bulletin.js';
 import {ToolValidationError} from '../acp/errors.js';
 import {GeminiUnavailableError} from '../gemini/errors.js';
 import {ModelProviderError} from '../openai/errors.js';
-import {isAllNeedsRequest,storedNeedsOnly,calculateAllNeeds,renderAllNeeds,type SnapshotScope} from './needsScope.js';
+import {calculateAllNeeds,renderAllNeeds,renderWaterRanking,renderPriorityRanking,type SnapshotScope} from './needsScope.js';
 import {AuthService,type Principal} from '../auth/service.js';
 import {correctionBaseKey} from './structuredCorrection.js';
 import {splitRowSnapshots} from './rowDrafts.js';
 import {mapConcurrent,type WorkspaceState} from '../db/workspace.js';
+import {storageReaderInput} from './readerInput.js';
+import {analysisToolName,AnalysisRequest} from './analysisTool.js';
 
 export class BatchOrchestrator extends EventEmitter {
   auth?:AuthService;
   private principals=new Map<string,Principal>();
   private jobs=new Set<Promise<void>>();
   private overviewRunning=new Set<string>();
+  private eventWrites=new Map<string,Promise<void>>();
   // One-use handoff from recovery to overview, never an operational-data cache.
   private overviewRecovery=new Map<string,{state:Promise<WorkspaceState>;expiresAt:number}>();
-  async recoverWorkspaceState(sessionId:string):Promise<WorkspaceState>{
+  async recoverWorkspaceState(sessionId:string,read:()=>WorkspaceState|Promise<WorkspaceState>=()=>this.repo.getWorkspaceState(sessionId)):Promise<WorkspaceState>{
     for(const [id,entry] of this.overviewRecovery)if(entry.expiresAt<=Date.now())this.overviewRecovery.delete(id);
     if(this.overviewRecovery.size>=1000)this.overviewRecovery.delete(this.overviewRecovery.keys().next().value!);
-    const entry={state:Promise.resolve(this.repo.getWorkspaceState(sessionId)),expiresAt:Date.now()+30000};
+    const entry={state:Promise.resolve().then(read),expiresAt:Date.now()+30000};
     this.overviewRecovery.set(sessionId,entry);
     try{
       const state=await entry.state;
@@ -58,6 +61,17 @@ export class BatchOrchestrator extends EventEmitter {
     return {...args,input_value:JSON.stringify({__sigap_context:this.auth.capability(principal,session.context_id,tool,reference),input})};
   }
   private sessions = new Map<string, Promise<string>>();
+  private warming = new Set<string>();
+  /** Prepare metadata only while the browser recovers its state. No tool/model call. */
+  warmSession(sessionId:string,contextId:string):void {
+    if(this.sessions.has(sessionId)||this.warming.has(sessionId)||this.warming.size>=2)return;
+    this.warming.add(sessionId);
+    this.schedule(async()=>{
+      const started=Date.now();
+      try{await this.initializeRuntime(sessionId,contextId);logger.info('Persiapan koneksi workflow selesai',{duration_ms:Date.now()-started});}
+      finally{this.warming.delete(sessionId);}
+    });
+  }
   private running = new Set<string>();
   isProcessing(sessionId: string): boolean { return this.running.has(sessionId); }
   constructor(private repo: Repository, private runtime: AgentRuntime,
@@ -66,9 +80,14 @@ export class BatchOrchestrator extends EventEmitter {
 
   private async publish(event: ApplicationEvent): Promise<void> {
     event = { ...event, payload: { ...event.payload, batch_id: event.batch_id, request_id: event.request_id } };
-    const saved = (await this.repo.appendEvent({ sessionId: event.session_id, batchId: event.batch_id,
-      requestId: event.request_id, eventType: event.event_type, payload: event.payload }));
-    this.emit('event', { ...event, event_id: saved.event_id });
+    const previous=this.eventWrites.get(event.session_id)??Promise.resolve();
+    const pending=previous.catch(()=>{}).then(async()=>{
+      const saved=await this.repo.appendEvent({sessionId:event.session_id,batchId:event.batch_id,
+        requestId:event.request_id,eventType:event.event_type,payload:event.payload});
+      this.emit('event',{...event,event_id:saved.event_id});
+    });
+    this.eventWrites.set(event.session_id,pending);
+    try{await pending;}finally{if(this.eventWrites.get(event.session_id)===pending)this.eventWrites.delete(event.session_id);}
   }
 
   private async initializeRuntime(sessionId:string,contextId:string){
@@ -93,14 +112,14 @@ export class BatchOrchestrator extends EventEmitter {
   }
 
   /** Dashboard hydration calls workflows directly, without chat or operational writes. */
-  async readWorkspaceOverview(sessionId:string){
+  async readWorkspaceOverview(sessionId:string,checkedSession?:Readonly<SessionRecord>){
     const server=this.sessionConfig.mcpServerConfig?.some((s:any)=>s.name==='langflow'&&s.type==='http');
     if(!server&&!(this.runtime.readStoredRekap&&this.runtime.calculateNeedsForSnapshot))return {status:'unavailable' as const};
     if(this.running.has(sessionId)||this.overviewRunning.has(sessionId))return {status:'busy' as const};
     this.overviewRunning.add(sessionId);
     const started=Date.now();
     try{
-      const [state,session]=await Promise.all([this.takeOverviewRecovery(sessionId),this.repo.getSession(sessionId)]);
+      const [state,session]=await Promise.all([this.takeOverviewRecovery(sessionId),checkedSession?.session_id===sessionId?checkedSession:this.repo.getSession(sessionId)]);
       if(state.activeBatch)return {status:'busy' as const};
       if(!session)throw new Error('Sesi tidak ditemukan.');
       logger.info('Tahap ringkasan selesai',{stage:'recovery',duration_ms:Date.now()-started,reviews:state.reviews.length});
@@ -108,7 +127,7 @@ export class BatchOrchestrator extends EventEmitter {
       await this.initializeRuntime(sessionId,session.context_id);
       logger.info('Tahap ringkasan selesai',{stage:'connect_mcp',duration_ms:Date.now()-setupStarted});
       const readStarted=Date.now();
-      const raw=await this.readStoredRekapSnapshot(sessionId);
+      const raw=await this.readStoredRekapSnapshot(sessionId,true);
       logger.info('Tahap ringkasan selesai',{stage:'read_rekap',duration_ms:Date.now()-readStarted});
       if(!raw||raw.isError)throw new Error('Rekap belum dapat dibaca.');
       const stored=parseSigapReadResult(raw.content.filter(p=>p.type==='text').map(p=>p.text||'').join('\n'));
@@ -117,6 +136,7 @@ export class BatchOrchestrator extends EventEmitter {
       if(stored.records?.length){
         if(!stored.snapshot_id||!stored.snapshot_sha256)throw new Error('Referensi rekap belum tersedia.');
         scopes.push({snapshot_id:stored.snapshot_id,snapshot_sha256:stored.snapshot_sha256,records:stored.records,kind:'stored'});
+        if(stored.validated_calculation!==undefined)cached.set(stored.snapshot_id,JSON.stringify(stored.validated_calculation));
       }
       for(const {snapshot,batch} of [...state.reviews].reverse()){
         const payload=JSON.parse(snapshot.payload_json);
@@ -162,8 +182,8 @@ export class BatchOrchestrator extends EventEmitter {
     }
   }
 
-  private async readStoredRekapSnapshot(sessionId:string) {
-    if(this.runtime.readStoredRekap)return this.runtime.readStoredRekap(sessionId);
+  private async readStoredRekapSnapshot(sessionId:string,includeCalculation=false) {
+    if(this.runtime.readStoredRekap)return this.runtime.readStoredRekap(sessionId,undefined,{includeCalculation});
     const server=this.sessionConfig.mcpServerConfig?.find((s:any)=>s.name==='langflow'&&s.type==='http');
     if(!server)throw new Error('MCP baca rekap belum tersedia untuk koreksi.');
     const client=new McpHttpClient({url:server.url,headers:Object.fromEntries((server.headers??[]).map((h:any)=>[h.name,h.value]))});
@@ -172,7 +192,7 @@ export class BatchOrchestrator extends EventEmitter {
       await client.initialize(signal);
       const tool=(await client.listTools(signal)).find(t=>canonicalToolName(t.name)==='fetch_shelters');
       if(!tool)throw new Error('Tool baca rekap tidak tersedia.');
-      return await client.callTool(tool.name,await this.secureToolInput(sessionId,tool.name,{input_value:JSON.stringify({action:'all'})}),signal);
+      return await client.callTool(tool.name,await this.secureToolInput(sessionId,tool.name,{input_value:JSON.stringify(storageReaderInput(tool.description,includeCalculation))}),signal);
     }finally{await client.close();}
   }
 
@@ -211,9 +231,11 @@ export class BatchOrchestrator extends EventEmitter {
     let terminalEvent = false;
     let writeAuthorized = false;
     let preview: any = null;
+    let validatedCalculation:unknown;
     let invalid = false;
     let assistantReplied = false;
     let reportStarted = false;
+    let processingStarted = false;
     let correctionBase: {snapshot_id:string;snapshot_sha256:string;record_index:number}|undefined;
     let correctionRecords:any[]|undefined;
     const rowReviews:Array<{batchId:string;preview:any}>=[];
@@ -224,6 +246,7 @@ export class BatchOrchestrator extends EventEmitter {
     const handleEvent = async (event: ApplicationEvent) => {
       if (invalid) return;
       if (event.session_id !== options.sessionId || event.batch_id !== options.batchId) return;
+      if (event.event_type === 'processing_started' && processingStarted) return;
       try {
         const text = typeof event.payload?.rawOutput === 'string' ? event.payload.rawOutput : JSON.stringify(event.payload);
         switch (event.event_type) {
@@ -242,7 +265,10 @@ export class BatchOrchestrator extends EventEmitter {
             const records = parsed.snapshot_records.length ? parsed.snapshot_records : parsed.records;
             if(correctionBase&&correctionRecords&&(records.length!==correctionRecords.length||correctionRecords.some((record,index)=>index!==correctionBase!.record_index&&!isDeepStrictEqual(record,records[index]))))throw new Error('Klarifikasi menghilangkan atau mengubah posko lain dari kandidat.');
             const issues = parsed.snapshot_issues.length ? parsed.snapshot_issues : parsed.issues;
-            const payload = { ...parsed, records, issues };
+            // Keep the authoritative review rows once. Native tool aliases and
+            // inline calculation metadata need not inflate every persisted event.
+            const {validated_calculation:inlineCalculation,snapshot_records:_transportRecords,...candidateData}=parsed;
+            const payload = { ...candidateData, records, issues };
             if (!records.length) throw new Error('Kandidat tidak memuat record.');
             if(this.auth&&records.length>1){
               const principal=this.principals.get(options.sessionId);
@@ -250,26 +276,48 @@ export class BatchOrchestrator extends EventEmitter {
               const parts=await splitRowSnapshots(this.auth.gateway,principal.userId,batch.context_id,parsed);
               if(parts.length!==records.length)throw new Error('Jumlah draf tidak sesuai sumber.');
               await this.repo.updateBatchStatus(batch.batch_id,'split_for_review');
-              for(const part of parts){
-                const child=await this.repo.createBatch({sessionId:options.sessionId,requestId:`row:${batch.batch_id}:${part.snapshot_id}`,contextId:batch.context_id,sourceSha256:batch.source_sha256,sourceLength:batch.source_length,filteredText:batch.filtered_text||'',piiSummary:JSON.parse(batch.pii_summary_json||'{}')});
-                const quality=part.issues.length||part.records.some((r:any)=>r.missing_fields?.length||r.validation_issues?.length)?'PERLU_KLARIFIKASI':'LOLOS_PEMERIKSAAN';
-                await this.repo.saveSnapshot({snapshotId:part.snapshot_id,snapshotSha256:part.snapshot_sha256,batchId:child.batch_id,version:1,qualityStatus:quality,payload:part});
-                await this.repo.updateBatchStatus(child.batch_id,'ready_for_review',{preview_payload_json:JSON.stringify(part)});
-                rowReviews.push({batchId:child.batch_id,preview:part});
-                await this.publish(createEvent(options.sessionId,'preview_ready',{...part,simulated},{batchId:child.batch_id,requestId:options.requestId}));
+              const createdChildren:string[]=[],start=rowReviews.length;
+              try{
+                // Serial batch creation preserves the per-session active-batch constraint.
+                for(const {snapshot_records:_transportRecords,...part} of parts){
+                  const child=await this.repo.createBatch({sessionId:options.sessionId,requestId:`row:${batch.batch_id}:${part.snapshot_id}`,contextId:batch.context_id,sourceSha256:batch.source_sha256,sourceLength:batch.source_length,filteredText:batch.filtered_text||'',piiSummary:JSON.parse(batch.pii_summary_json||'{}')});
+                  createdChildren.push(child.batch_id);
+                  const quality=part.issues.length||part.records.some((r:any)=>r.missing_fields?.length||r.validation_issues?.length)?'PERLU_KLARIFIKASI':'LOLOS_PEMERIKSAAN';
+                  const review=await this.repo.getOrCreateReviewSnapshot({sessionId:options.sessionId,snapshotId:part.snapshot_id,snapshotSha256:part.snapshot_sha256,batchId:child.batch_id,qualityStatus:quality,payload:part});
+                  if(!review.created)throw new Error('Referensi draf sudah dipakai batch lain.');
+                  rowReviews.push({batchId:child.batch_id,preview:part});
+                  await this.publish(createEvent(options.sessionId,'preview_ready',{...part,simulated},{batchId:child.batch_id,requestId:options.requestId}));
+                }
+              }catch(error){
+                rowReviews.splice(start);
+                // Never offer a partial import for approval after draft persistence failed.
+                const cleanup=await Promise.allSettled(createdChildren.map(async child=>{
+                  await this.repo.revokeApprovals(child);
+                  await this.repo.updateBatchStatus(child,'payload_invalid',{latest_snapshot_id:null,latest_snapshot_sha256:null});
+                }));
+                for(const [index,outcome] of cleanup.entries())if(outcome.status==='fulfilled')
+                  await this.publish(createEvent(options.sessionId,'error',{code:'ROW_PREPARATION_FAILED',message:'Pembuatan draf laporan belum lengkap. Impor perlu dicoba ulang; draf ini belum dapat disetujui.'},{batchId:createdChildren[index],requestId:options.requestId}));
+                throw error;
               }
               terminalEvent=true;return;
             }
-            const old = (await this.repo.getSnapshot(parsed.snapshot_id));
-            if (old && (old.batch_id !== batch.batch_id || old.snapshot_sha256 !== parsed.snapshot_sha256 || old.superseded_by || !isDeepStrictEqual(JSON.parse(old.payload_json), payload))) throw new Error('Referensi snapshot tidak boleh dipakai untuk payload yang berubah.');
-            if (!old) (await this.repo.saveSnapshot({ snapshotId: parsed.snapshot_id, snapshotSha256: parsed.snapshot_sha256,
-              batchId: batch.batch_id, version: (await this.repo.getBatch(batch.batch_id))?.latest_snapshot_id ? 2 : 1,
-              qualityStatus: issues.length || records.some(r => r.validation_issues?.length || r.missing_fields?.length || r.pending_clear_fields?.length) ? 'PERLU_KLARIFIKASI' : 'LOLOS_PEMERIKSAAN', payload }));
+            const review=await this.repo.getOrCreateReviewSnapshot({sessionId:options.sessionId,batchId:batch.batch_id,
+              snapshotId:parsed.snapshot_id,snapshotSha256:parsed.snapshot_sha256,payload,
+              qualityStatus:issues.length||records.some(r=>r.validation_issues?.length||r.missing_fields?.length||r.pending_clear_fields?.length)?'PERLU_KLARIFIKASI':'LOLOS_PEMERIKSAAN'});
+            const old=review.created?undefined:review.snapshot;
+            const priorPayload:Record<string,unknown>|undefined=old?JSON.parse(old.payload_json):undefined;
+            // Pre-upgrade backend snapshots may contain a redundant native alias.
+            // Only ignore it when it is empty or exactly equals the review rows.
+            if(priorPayload&&Array.isArray(priorPayload.snapshot_records)&&(!priorPayload.snapshot_records.length||isDeepStrictEqual(priorPayload.snapshot_records,priorPayload.records)))delete priorPayload.snapshot_records;
+            if (old && (old.batch_id !== batch.batch_id || old.snapshot_sha256 !== parsed.snapshot_sha256 || old.superseded_by || !isDeepStrictEqual(priorPayload, payload))) throw new Error('Referensi snapshot tidak boleh dipakai untuk payload yang berubah.');
             (await this.repo.supersedePreviousSnapshots(batch.batch_id, parsed.snapshot_id));
             if(correctionBase)(await this.repo.supersedeSnapshot(correctionBase.snapshot_id,parsed.snapshot_id));
-            (await this.repo.updateBatchStatus(batch.batch_id, 'ready_for_review', { preview_payload_json: JSON.stringify(payload) }));
+            // New snapshots persist their preview with the same batch reference update.
+            // Replayed legacy snapshots may predate that compact persistence path.
+            if(old)(await this.repo.updateBatchStatus(batch.batch_id, 'ready_for_review', { preview_payload_json: JSON.stringify(payload) }));
             event = { ...event, payload: { ...payload, simulated, superseded_snapshot_ids:correctionBase?[correctionBase.snapshot_id]:[] } };
             preview = event.payload;
+            validatedCalculation = inlineCalculation;
             terminalEvent = true; break;
           }
           case 'storage_result': {
@@ -306,7 +354,7 @@ export class BatchOrchestrator extends EventEmitter {
             // Ignore intermediate model calculations, which may still reference the old candidate.
             if(correctionRequested&&!event.payload.automatic_recalculation)return;
             const parsed = parseGapResult(text);
-            (await this.repo.updateBatchStatus(batch.batch_id, (await this.repo.getBatch(batch.batch_id))!.status, { gap_payload_json: JSON.stringify(parsed) }));
+            (await this.repo.updateBatchPayload(batch.batch_id, { gap_payload_json: JSON.stringify(parsed) }));
             event = { ...event, payload: parsed }; break;
           }
           case 'bulletin_ready': {
@@ -316,7 +364,7 @@ export class BatchOrchestrator extends EventEmitter {
             const principal=this.principals.get(options.sessionId);
             if(this.auth&&principal){try{const context=await this.auth.gateway.call('context.get',{actor_id:principal.userId,context_id:batch.context_id});contextName=context?.name;}catch{/* Missing display metadata never grants access or changes the source. */}}
             const payload={...parsed,source_metadata:{snapshot_id:parsed.snapshot_id||null,snapshot_sha256:parsed.snapshot_sha256||null,records:parsed.records||[],generated_at:new Date().toISOString(),kind:bulletinSource?'stored':'snapshot',context_name:contextName}};
-            (await this.repo.updateBatchStatus(batch.batch_id, (await this.repo.getBatch(batch.batch_id))!.status, { bulletin_payload_json: JSON.stringify(payload) }));
+            (await this.repo.updateBatchPayload(batch.batch_id, { bulletin_payload_json: JSON.stringify(payload) }));
             event = { ...event, payload }; break;
           }
           case 'error':
@@ -324,6 +372,7 @@ export class BatchOrchestrator extends EventEmitter {
             terminalEvent = true; break;
         }
         (await this.publish(event));
+        if (event.event_type === 'processing_started') processingStarted = true;
       } catch (err) {
         invalid = true;
         (await this.repo.revokeApprovals(batch.batch_id));
@@ -337,29 +386,50 @@ export class BatchOrchestrator extends EventEmitter {
     this.running.add(options.sessionId);
     let storedRead: Promise<void> = Promise.resolve();
     try {
-      await this.initializeRuntime(options.sessionId,batch.context_id);
-      if(options.operation==='prepare'&&options.filteredText&&!isCorrectionRequest(options.filteredText)&&isAllNeedsRequest(options.filteredText)){
-        try{
+      // Persist initial progress while preparing MCP metadata. No tool/model is
+      // dispatched until both finish; settle both even when one fails.
+      const setup = await Promise.allSettled([
+        this.publish(createEvent(options.sessionId,'processing_started',{}, {batchId:options.batchId,requestId:options.requestId}))
+          .then(()=>{processingStarted=true;}),
+        this.initializeRuntime(options.sessionId,batch.context_id),
+      ]);
+      for (const result of setup) if (result.status === 'rejected') throw result.reason;
+      if(options.operation==='prepare'&&!correctionRequested&&!options.sourceFormat&&!options.structuredRecord){
+        options={...options,analyzeNeeds:async request=>{
+          request=AnalysisRequest.parse(request);
           (await this.publish(createEvent(options.sessionId,'stage_changed',{stage:'calculate_gap_all'},{batchId:options.batchId,requestId:options.requestId})));
-          const raw=await this.readStoredRekapSnapshot(options.sessionId);
+          const raw=await this.readStoredRekapSnapshot(options.sessionId,true);
           if(!raw||raw.isError)throw new Error('Seluruh rekap tersimpan belum dapat dibaca.');
           const stored=parseSigapReadResult(raw.content.filter(p=>p.type==='text').map(p=>p.text||'').join('\n'));
           if(!['ok','source_empty'].includes(stored.status)||stored.total_shelters!=null&&stored.total_shelters!==(stored.records?.length||0))throw new Error('Pembacaan rekap tidak lengkap; permintaan semua desa dihentikan.');
-          const scopes:SnapshotScope[]=[];
+          const scopes:SnapshotScope[]=[],calculated=new Map<string,string>();
           if(stored.records?.length){
             if(!stored.snapshot_id||!stored.snapshot_sha256)throw new Error('Rekap tidak memiliki referensi snapshot.');
             scopes.push({snapshot_id:stored.snapshot_id,snapshot_sha256:stored.snapshot_sha256,records:stored.records,kind:'stored'});
+            if(stored.validated_calculation!==undefined)calculated.set(stored.snapshot_id,JSON.stringify(stored.validated_calculation));
           }
-          if(!storedNeedsOnly(options.filteredText))for(const snapshot of (await (await this.repo.getReviewSnapshots(options.sessionId)).reverse())){
+          if(request.scope==='including_candidates')for(const {snapshot,batch:reviewBatch} of (await this.repo.getWorkspaceState(options.sessionId)).reviews.reverse()){
             const payload=JSON.parse(snapshot.payload_json);
             scopes.push({snapshot_id:snapshot.snapshot_id,snapshot_sha256:snapshot.snapshot_sha256,records:payload.records,kind:'candidate'});
+            if(reviewBatch.gap_payload_json){try{
+              const gap=parseGapResult(reviewBatch.gap_payload_json);
+              if(gap.snapshot_id===snapshot.snapshot_id&&gap.snapshot_sha256===snapshot.snapshot_sha256)calculated.set(snapshot.snapshot_id,reviewBatch.gap_payload_json);
+            }catch{/* Legacy or malformed cached drafts are recalculated from the signed snapshot. */}}
           }
-          const result=await calculateAllNeeds(scopes,reference=>this.calculateSnapshot(options.sessionId,reference));
+          if(!scopes.length){
+            await this.publish(createEvent(options.sessionId,'stored_rekap_ready',{records:[],total_shelters:0,source:stored.source},{batchId:options.batchId,requestId:options.requestId}));
+            return 'Belum ada data posko dalam cakupan yang dipilih untuk dianalisis. Masukkan laporan dan periksa datanya terlebih dahulu.';
+          }
+          await mapConcurrent(scopes.filter(ref=>!calculated.has(ref.snapshot_id)),2,async ref=>{
+            calculated.set(ref.snapshot_id,await this.calculateSnapshot(options.sessionId,ref));
+          });
+          const result=await calculateAllNeeds(scopes,reference=>Promise.resolve(calculated.get(reference.snapshot_id)!));
           (await this.publish(createEvent(options.sessionId,'stored_rekap_ready',{records:stored.records||[],total_shelters:stored.records?.length||0,source:stored.source},{batchId:options.batchId,requestId:options.requestId})));
           (await onEvent(createEvent(options.sessionId,'calculation_ready',{rawOutput:JSON.stringify(result)},{batchId:options.batchId,requestId:options.requestId})));
-          if(!invalid){(await onEvent(createEvent(options.sessionId,'assistant_message',{text:renderAllNeeds(result)},{batchId:options.batchId,requestId:options.requestId})));(await this.repo.updateBatchStatus(batch.batch_id,'conversation_done'));}
-        }catch(error){(await this.repo.updateBatchStatus(batch.batch_id,'failed'));(await this.publish(createEvent(options.sessionId,'error',{code:'NEEDS_SCOPE_INVALID',message:error instanceof Error?error.message:'Seluruh kebutuhan belum dapat diverifikasi.'},{batchId:options.batchId,requestId:options.requestId})));}
-        return;
+          await eventQueue;
+          if(invalid)throw new Error('Hasil analisis tidak dapat divalidasi.');
+          return request.view==='water_ranking'?renderWaterRanking(result):request.view==='priority_ranking'?renderPriorityRanking(result):renderAllNeeds(result);
+        }};
       }
       if(options.operation==='prepare'&&options.filteredText&&isCorrectionRequest(options.filteredText)){
         try{
@@ -409,10 +479,11 @@ export class BatchOrchestrator extends EventEmitter {
         }
       }
       if (options.firstTurn && options.operation === 'prepare' && !bulletinSource && this.runtime.readStoredRekap) storedRead = this.loadStoredRekap(options);
-      if(this.auth&&options.operation==='prepare'&&!bulletinSource&&!options.structuredRecord&&(correctionRequested||options.sourceFormat==='csv'||(options.filteredText&&isClearlyReport(options.filteredText))))options={...options,fastExtraction:true};
+      if(this.auth&&options.operation==='prepare'&&!bulletinSource&&!options.structuredRecord&&(correctionRequested||options.sourceFormat==='csv'))options={...options,fastExtraction:true};
       await this.runtime.sendPrompt(options, onEvent, async (_sid, call) => {
         await eventQueue;
         if(this.auth){const principal=this.principals.get(options.sessionId);if(!principal||principal.expiresAt<=Date.now())return {allow:false,reason:'Sesi login telah berakhir.'};await this.auth.stillAuthorized(principal.userId,principal.sessionId,batch.context_id);}
+        if(call.toolName===analysisToolName)return {allow:!invalid&&options.operation==='prepare'&&!!options.analyzeNeeds&&AnalysisRequest.safeParse(call.args).success,reason:'Analisis hanya untuk pembacaan rekap dengan parameter yang valid.'};
         const name = canonicalToolName(call.toolName);
         if(name==='draft_bulletin'&&bulletinSource){
           try{
@@ -430,11 +501,19 @@ export class BatchOrchestrator extends EventEmitter {
         return decision;
       });
       await eventQueue;
-      for(const review of rowReviews){
+      const rowCalculations=await mapConcurrent(rowReviews,2,async review=>{
         try{
           const raw=await this.calculateSnapshot(options.sessionId,{snapshot_id:review.preview.snapshot_id,snapshot_sha256:review.preview.snapshot_sha256});
-          const result=parseGapResult(raw);
-          await this.repo.updateBatchStatus(review.batchId,'ready_for_review',{gap_payload_json:JSON.stringify(result)});
+          await calculateAllNeeds([{snapshot_id:review.preview.snapshot_id,snapshot_sha256:review.preview.snapshot_sha256,records:review.preview.records,kind:'candidate'}],async()=>raw);
+          return parseGapResult(raw);
+        }catch{return null;}
+      });
+      // Persist and publish in source order; concurrent event publication can
+      // otherwise deliver a later SSE cursor before an earlier event arrives.
+      for(const [index,review] of rowReviews.entries()){
+        try{
+          const result=rowCalculations[index];if(!result)throw new Error('Kalkulasi draf belum terverifikasi.');
+          await this.repo.updateBatchPayload(review.batchId,{gap_payload_json:JSON.stringify(result)});
           await this.publish(createEvent(options.sessionId,'calculation_ready',result,{batchId:review.batchId,requestId:options.requestId}));
         }catch{await this.publish(createEvent(options.sessionId,'stage_changed',{stage:'recalculation_failed',message:'Draf tersimpan; perhitungan kebutuhan perlu dicoba ulang.'},{batchId:review.batchId,requestId:options.requestId}));}
         await this.publish(createEvent(options.sessionId,'approval_required',review.preview,{batchId:review.batchId,requestId:options.requestId}));
@@ -456,7 +535,9 @@ export class BatchOrchestrator extends EventEmitter {
         (await this.publish(createEvent(options.sessionId,'stage_changed',{stage:'recalculate_correction'},meta)));
         try{
           const reference={snapshot_id:preview.snapshot_id,snapshot_sha256:preview.snapshot_sha256};
-          const raw=await this.calculateSnapshot(options.sessionId,reference);
+          const raw=validatedCalculation===undefined
+            ? await this.calculateSnapshot(options.sessionId,reference)
+            : JSON.stringify(validatedCalculation);
           // Reuse the full-scope validator: no omitted villages or stale snapshot references.
           await calculateAllNeeds([{...reference,records:preview.records,kind:'candidate'}],async()=>raw);
           const result={...parseGapResult(raw),automatic_recalculation:true};
@@ -504,6 +585,7 @@ export class BatchOrchestrator extends EventEmitter {
     for (const id of this.sessions.keys()) await this.runtime.closeSession(id);
     await this.runtime.shutdown?.();
     await Promise.allSettled([...this.jobs]);
+    await Promise.allSettled([...this.eventWrites.values()]);
     this.principals.clear();
   }
 }

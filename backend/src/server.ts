@@ -18,10 +18,12 @@ import { GeminiAgentRuntime } from './gemini/runtime.js';
 import { loadGeminiSettings } from './gemini/config.js';
 import {OpenAICompatibleRuntime} from './openai/runtime.js';
 import {loadOpenAISettings} from './openai/config.js';
+import {createWatsonxRuntime} from './watsonx/runtime.js';
 import type {Repository} from './db/contract.js';
 import {SupabaseRepository} from './db/supabase.js';
 import {SupabaseGateway,GatewayRejectedError} from './supabase/client.js';
 import {AuthService,AccessError} from './auth/service.js';
+import {rememberAuthorizedSession} from './auth/requestSession.js';
 import {createAuthRoutes} from './routes/auth.js';
 import {createCommandRoutes} from './routes/command.js';
 import {createRecoveryRoute} from './routes/recovery.js';
@@ -47,10 +49,11 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<{
 }> {
   const config = options.config || loadConfig();
   const provider = config.agentProvider || 'gemini';
-  if (!['gemini', 'openai', 'bob', 'mock'].includes(provider)) throw new Error('Agent provider tidak valid.');
+  if (!['gemini', 'openai', 'watsonx', 'bob', 'mock'].includes(provider)) throw new Error('Agent provider tidak valid.');
   // Only injected test repositories use the legacy token fixture. Production is fail-closed.
   if(!options.repo&&!config.supabase)throw new Error('Konfigurasi Supabase Auth dan database wajib diisi.');
-  if(config.supabase&&(!/^https:\/\/[a-z0-9]+\.supabase\.co$/.test(config.supabase.url)||!config.supabase.publishableKey||config.supabase.gatewaySecret.length<48||!config.supabase.organizationId))throw new Error('Konfigurasi Supabase tidak lengkap.');
+  const localSupabase=process.env.SIGAP_DEPLOYMENT_MODE==='local'&&config.supabase?.url==='http://api-gw:8000';
+  if(config.supabase&&(!localSupabase&&!/^https:\/\/[a-z0-9]+\.supabase\.co$/.test(config.supabase.url)||!config.supabase.publishableKey||config.supabase.gatewaySecret.length<48||!config.supabase.organizationId))throw new Error('Konfigurasi Supabase tidak lengkap.');
   const auth=options.auth??(config.supabase?new AuthService(new SupabaseGateway(config.supabase)):undefined);
   const repo = options.repo || new SupabaseRepository(auth!.gateway);
 
@@ -58,6 +61,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<{
   if (!runtime) {
     if (provider === 'gemini') runtime = new GeminiAgentRuntime(loadGeminiSettings());
     else if(provider==='openai')runtime=new OpenAICompatibleRuntime(loadOpenAISettings());
+    else if(provider==='watsonx')runtime=createWatsonxRuntime();
     else if (provider === 'mock') runtime = new FakeAgentRuntime();
     else {
     const acpRuntime = new AcpProcessRuntime(config.bobCommand, config.bobArgs, config.bobWorkspace);
@@ -101,13 +105,19 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<{
     if(path==='/api/publications')return;
     if(request.principal.membership.role==='viewer')throw new AccessError(403,'READ_ONLY_ROLE');
     const sessionMatch=/^\/api\/sessions\/([^/]+)\//.exec(path),batchMatch=/^\/api\/batches\/([^/]+)/.exec(path);
-    if(sessionMatch)await auth.session(request.principal,await repo.getSession(decodeURIComponent(sessionMatch[1])));
+    if(sessionMatch){
+      const session=await repo.getSession(decodeURIComponent(sessionMatch[1]));
+      await auth.session(request.principal,session);
+      rememberAuthorizedSession(request,session!);
+    }
     if(batchMatch){const batch=await repo.getBatch(decodeURIComponent(batchMatch[1]));await auth.session(request.principal,batch?await repo.getSession(batch.session_id):null);}
   });
   app.setErrorHandler((error:any,request,reply)=>{if(error instanceof AccessError)return reply.code(error.status).send({error:{code:error.code}});if(error instanceof GatewayRejectedError)return reply.code(403).send({error:{code:'OPERATION_REJECTED'}});logger.error('Permintaan backend gagal',{code:error.code});return reply.code(error.statusCode&&error.statusCode<500?error.statusCode:503).send({error:{code:'REQUEST_FAILED'}});});
   if(auth)app.post('/api/internal/langflow',{bodyLimit:8*1024*1024},async(request,reply)=>{
+    const started=Date.now();
     const cap=auth.verifyCapability(String(request.headers['x-sigap-capability']??''));
     await auth.stillAuthorized(cap.actor_id,cap.auth_session_id,cap.context_id);
+    const authorizedAt=Date.now();
     const body=request.body as any;
     const allowed=['flow.save','flow.load','storage.read'];
     if(cap.tool==='upsert_shelter')allowed.push('storage.commit','storage.receipt','flow.commit');
@@ -115,7 +125,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<{
     if(body.action==='storage.commit'||body.action==='storage.receipt'){
       if(body.args?.source_snapshot?.snapshot_id!==cap.write_reference?.snapshot_id||body.args?.source_snapshot?.snapshot_sha256!==cap.write_reference?.snapshot_sha256)throw new AccessError(403,'WRITE_REFERENCE_MISMATCH');
     }
-    return {data:await auth.gateway.call(body.action,{...body.args,actor_id:cap.actor_id,context_id:cap.context_id})};
+    const data=await auth.gateway.call(body.action,{...body.args,actor_id:cap.actor_id,context_id:cap.context_id});
+    logger.info('Callback Langflow selesai',{action:body.action,authorization_ms:authorizedAt-started,operation_ms:Date.now()-authorizedAt,duration_ms:Date.now()-started});
+    return {data};
   });
 
   // Register routes

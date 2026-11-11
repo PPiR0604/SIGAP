@@ -1,7 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { randomBytes } from "node:crypto";
 import { initDatabase } from "./schema.js";
-import type { WorkspaceState } from "./workspace.js";
+import type { WorkspaceState, SubmissionState } from "./workspace.js";
 
 export interface SessionRecord {
     owner_user_id?: string;
@@ -111,6 +111,13 @@ export class SigapRepository {
     }
 
     // --- Batch ---
+    getSubmissionState(sessionId:string,requestId:string):SubmissionState {
+        // Synchronous local queries cannot interleave with another request on this repository.
+        return {existingBatch:this.getBatchByRequestId(requestId,sessionId),
+            activeBatchId:this.getActiveBatch(sessionId)?.batch_id??null,
+            firstTurn:this.countBatches(sessionId)===0};
+    }
+
     getActiveBatch(sessionId: string): BatchRecord | null {
         const stmt = this.db.prepare(`
       SELECT * FROM batches 
@@ -260,6 +267,12 @@ export class SigapRepository {
         };
     }
 
+    getLatestEventId(sessionId: string): number {
+        return Number((this.db.prepare(
+            "SELECT coalesce(max(event_id),0) AS latest FROM events WHERE session_id = ?",
+        ).get(sessionId) as {latest:number}).latest);
+    }
+
     getEventsAfter(sessionId: string, afterEventId = 0): EventRecord[] {
         const stmt = this.db.prepare(`
       SELECT * FROM events 
@@ -267,6 +280,17 @@ export class SigapRepository {
       ORDER BY event_id ASC
     `);
         return (stmt.all(sessionId, afterEventId) as any[]) || [];
+    }
+
+    updateBatchPayload(batchId: string, extra: Partial<Pick<BatchRecord,
+        "preview_payload_json" | "gap_payload_json" | "bulletin_payload_json">>): void {
+        const updates = ["updated_at = ?"], values: any[] = [new Date().toISOString()];
+        for (const key of ["preview_payload_json", "gap_payload_json", "bulletin_payload_json"] as const) {
+            if (extra[key] !== undefined) { updates.push(`${key} = ?`); values.push(extra[key]); }
+        }
+        values.push(batchId);
+        if (this.db.prepare(`UPDATE batches SET ${updates.join(", ")} WHERE batch_id = ?`).run(...values).changes !== 1)
+            throw new Error("Batch not found");
     }
 
     // --- Snapshots ---
@@ -305,6 +329,7 @@ export class SigapRepository {
             latest_snapshot_id: params.snapshotId,
             latest_snapshot_sha256: params.snapshotSha256,
             quality_status: params.qualityStatus,
+            preview_payload_json: payloadJson,
         });
 
         return {
@@ -318,6 +343,25 @@ export class SigapRepository {
             expires_at: expiresAt,
             superseded_by: null,
         };
+    }
+
+    getOrCreateReviewSnapshot(params:{sessionId:string;batchId:string;snapshotId:string;snapshotSha256:string;qualityStatus:string;payload:any}):{created:boolean;snapshot:SnapshotRecord} {
+        this.db.exec('SAVEPOINT sigap_review_prepare');
+        try {
+            if(params.payload?.snapshot_id!==params.snapshotId||params.payload?.snapshot_sha256!==params.snapshotSha256)throw new Error('Review payload does not match its reference.');
+            const batch=this.getBatch(params.batchId);
+            if(!batch||batch.session_id!==params.sessionId||!['processing','ready_for_review'].includes(batch.status))throw new Error('Review batch is missing, outside session or no longer editable.');
+            const existing=this.getSnapshot(params.snapshotId);
+            const result=existing?{created:false,snapshot:existing}:{created:true,snapshot:this.saveSnapshot({
+                ...params,version:batch.latest_snapshot_id?2:1,
+            })};
+            this.db.exec('RELEASE sigap_review_prepare');
+            return result;
+        } catch(error) {
+            this.db.exec('ROLLBACK TO sigap_review_prepare');
+            this.db.exec('RELEASE sigap_review_prepare');
+            throw error;
+        }
     }
 
     getSnapshot(snapshotId: string): SnapshotRecord | null {

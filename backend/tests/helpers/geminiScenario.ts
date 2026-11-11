@@ -14,13 +14,13 @@ export function scriptedModel(turns:Array<GeminiTurn|((contents:GeminiTurn[])=>P
   }};
   return {model,inputs};
 }
-export async function scenarioMcp(result?:(name:string,args:any,res:any)=>any){
+export async function scenarioMcp(result?:(name:string,args:any,res:any)=>any,descriptions:Record<string,string>={}){
   return mcpServer((message,res)=>{
     res.setHeader('content-type','application/json');
     const reply=(value:any)=>res.end(JSON.stringify({jsonrpc:'2.0',id:message.id,result:value}));
     if(message.method==='initialize'){res.setHeader('mcp-session-id','test-session');reply({protocolVersion:'2025-03-26'});}
     else if(message.method==='notifications/initialized'){res.writeHead(202);res.end();}
-    else if(message.method==='tools/list')reply({tools:toolNames.map(name=>({name,description:'Tool sintetis untuk regresi',inputSchema:{type:'object',properties:{input_value:{type:'string'}}}}))});
+    else if(message.method==='tools/list')reply({tools:toolNames.map(name=>({name,description:descriptions[name]||'Tool sintetis untuk regresi',inputSchema:{type:'object',properties:{input_value:{type:'string'}}}}))});
     else {
       const value=result?.(message.params.name,message.params.arguments,res);
       if(value===null)return;

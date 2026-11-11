@@ -1,3 +1,4 @@
+import {ActionButton} from './ui/ActionButton';
 import {useId,useState} from 'react';
 import {ChevronDown,Search} from 'lucide-react';
 import type {Shelter} from './demo';
@@ -34,10 +35,10 @@ export function NeedMapping({shelters,onSelect}:{shelters:Shelter[];onSelect:(s:
             </li>)}
           </ul>:<p className="area-no-needs">Belum ada kebutuhan yang dilaporkan.</p>}
           <button className="area-detail-toggle" onClick={()=>setExpanded(expanded===group.name?'':group.name)} aria-expanded={expanded===group.name} aria-controls={detailsId} aria-label={`Lihat posko di ${group.name}`}>{expanded===group.name?'Tutup daftar posko':'Lihat daftar posko'}<ChevronDown size={16} aria-hidden="true"/></button>
-          <div id={detailsId} hidden={expanded!==group.name} className="area-shelter-list">{group.rows.map(s=><button className="button secondary" key={shelterKey(s)} onClick={()=>onSelect(s)}>{s.name} · {s.people===null?'Jiwa belum diketahui':`${s.people} jiwa`}</button>)}</div>
+          <div id={detailsId} hidden={expanded!==group.name} className="area-shelter-list">{group.rows.map(s=><ActionButton className="button secondary" key={shelterKey(s)} onClick={()=>onSelect(s)}>{s.name} · {s.people===null?'Jiwa belum diketahui':`${s.people} jiwa`}</ActionButton>)}</div>
         </article>;
       })}
-      {filtered.length>0&&<div className="area-pagination"><p aria-live="polite">Menampilkan {currentPage*pageSize+1}–{Math.min((currentPage+1)*pageSize,filtered.length)} dari {filtered.length} wilayah</p>{pages>1&&<div role="group" aria-label="Halaman kebutuhan wilayah"><button className="button secondary" disabled={currentPage===0} onClick={()=>setPage(currentPage-1)}>Sebelumnya</button><button className="button secondary" disabled={currentPage===pages-1} onClick={()=>setPage(currentPage+1)}>Berikutnya</button></div>}</div>}
+      {filtered.length>0&&<div className="area-pagination"><p aria-live="polite">Menampilkan {currentPage*pageSize+1}–{Math.min((currentPage+1)*pageSize,filtered.length)} dari {filtered.length} wilayah</p>{pages>1&&<div role="group" aria-label="Halaman kebutuhan wilayah"><ActionButton className="button secondary" disabled={currentPage===0} onClick={()=>setPage(currentPage-1)}>Sebelumnya</ActionButton><ActionButton className="button secondary" disabled={currentPage===pages-1} onClick={()=>setPage(currentPage+1)}>Berikutnya</ActionButton></div>}</div>}
     </div><StatusOverview shelters={shelters} onSelect={onSelect}/></div>
   </section>;
 }

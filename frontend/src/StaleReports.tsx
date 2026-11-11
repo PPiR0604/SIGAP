@@ -1,3 +1,4 @@
+import {ActionButton} from './ui/ActionButton';
 import {useEffect,useState,type CSSProperties} from 'react';
 import {Clock3,ChevronDown,ChevronUp} from 'lucide-react';
 import type {Shelter} from './demo';
@@ -31,7 +32,7 @@ export function StaleReports({shelters,onSelect,expanded:controlledExpanded,onTo
  return <section className="card stale-reports" aria-label="Pembaruan laporan posko">
   <div className="stale-heading-row">
    <h2><Clock3 size={17} aria-hidden="true"/>Pembaruan laporan</h2>
-   {hasMore&&<button type="button" className={`button quiet stale-header-toggle ${expanded?'is-visible':'is-hidden'}`} aria-label={expanded?'Ciutkan pembaruan laporan':'Tampilkan semua pembaruan laporan'} title={expanded?'Ciutkan pembaruan laporan':'Tampilkan semua pembaruan laporan'} onClick={toggle}><ChevronUp size={16} aria-hidden="true"/></button>}
+   {hasMore&&<ActionButton type="button" className={`button quiet stale-header-toggle ${expanded?'is-visible':'is-hidden'}`} aria-label={expanded?'Ciutkan pembaruan laporan':'Tampilkan semua pembaruan laporan'} title={expanded?'Ciutkan pembaruan laporan':'Tampilkan semua pembaruan laporan'} onClick={toggle}><ChevronUp size={16} aria-hidden="true"/></ActionButton>}
   </div>
   <p>Waktu laporan terakhir yang tercatat.</p>
   {!shelters.length?<p>Belum ada rekap tersimpan.</p>:<><strong className="stale-count">{stale.length} posko lebih dari 24 jam</strong>

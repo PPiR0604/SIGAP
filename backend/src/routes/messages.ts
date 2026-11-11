@@ -8,6 +8,7 @@ import { filterPii } from '../pipeline/pii.js';
 import {csvReports} from '../pipeline/csvImport.js';
 import type { AppConfig } from '../config.js';
 import {StructuredCorrectionSchema,structuredCorrection} from '../pipeline/structuredCorrection.js';
+import {requestSession} from '../auth/requestSession.js';
 
 const MessageBodySchema = z.object({
   request_id: z.string().min(1, 'request_id wajib diisi.'),
@@ -26,7 +27,7 @@ export function createMessagesRoute(
       const { id: sessionId } = request.params as { id: string };
 
       // 1. Session exists?
-      const session = (await repo.getSession(sessionId));
+      const session = await requestSession(request,repo,sessionId);
       if (!session) {
         return reply.code(404).send({
           error: {
@@ -52,8 +53,10 @@ export function createMessagesRoute(
       if(correction&&filename)return reply.code(422).send({error:{code:'INVALID_CORRECTION'}});
 
       // 3. Idempotency check: same request_id?
-      const existingBatch = (await repo.getBatchByRequestId(requestId, sessionId));
+      const submission = await repo.getSubmissionState(sessionId,requestId);
+      const existingBatch = submission.existingBatch;
       if (existingBatch) {
+        if(existingBatch.source_sha256!==createHash('sha256').update(text,'utf8').digest('hex'))return reply.code(409).send({error:{code:'REQUEST_CONTENT_CONFLICT',message:'Identitas pengiriman sudah digunakan untuk isi laporan yang berbeda. Periksa laporan sebelumnya.'}});
         return reply.code(200).send({
           batch_id: existingBatch.batch_id,
           status: existingBatch.status,
@@ -63,8 +66,7 @@ export function createMessagesRoute(
       }
 
       // 4. Concurrency check: is there another active batch on this session?
-      const activeBatch = (await repo.getActiveBatch(sessionId));
-      if (activeBatch || orchestrator.isProcessing(sessionId)) {
+      if (submission.activeBatchId || orchestrator.isProcessing(sessionId)) {
         return reply.code(409).send({
           error: {
             code: 'ACTIVE_BATCH_IN_PROGRESS',
@@ -85,7 +87,7 @@ export function createMessagesRoute(
       }
 
       // Pesan pertama pada sesi: agen diminta membaca rekap tersimpan lebih dulu.
-      const firstTurn = (await repo.countBatches(sessionId)) === 0;
+      const firstTurn = submission.firstTurn;
 
       // 6. PII filtering
       const csv=filename?.toLowerCase().endsWith('.csv');

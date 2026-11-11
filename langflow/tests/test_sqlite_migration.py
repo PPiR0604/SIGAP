@@ -41,6 +41,43 @@ from shelter_report_validator import ShelterReportValidator,merge_correction
 
 
 class StorageTests(unittest.TestCase):
+    def test_empty_store_candidate_tracks_absence_when_other_shelters_are_added(self):
+        candidate=compare_stored([{'shelter_name':'Posko Uji','village':'Desa Uji'}],{'header':[],'rows':[]})[0]
+        baseline=json.loads(json.dumps(candidate['storage_baseline']))
+        stored={'header':['posko','desa','shelter_id','disaster_id'],
+                'rows':[['Posko Lain','Desa Lain','existing-id','']]}
+        self.assertEqual(compare_stored([candidate],stored)[0]['storage_baseline'],baseline)
+        stored['rows'].append(['Posko Uji','Desa Uji','another-officer-id',''])
+        with self.assertRaisesRegex(ValueError,'berubah'):
+            compare_stored([candidate],stored)
+
+    def test_empty_store_does_not_hide_deletion_of_a_reviewed_existing_row(self):
+        record={'shelter_name':'Posko Uji','village':'Desa Uji',
+                'storage_baseline':{'identity':'existing','row':{'posko':'Posko Uji'}}}
+        with self.assertRaisesRegex(ValueError,'berubah'):
+            compare_stored([record],{'header':[],'rows':[]})
+
+    def test_new_candidate_id_does_not_change_absent_storage_baseline(self):
+        stored={'header':['posko','desa','shelter_id','disaster_id'],
+                'rows':[['Posko Lain','Desa Lain','existing-id','']]}
+        candidate={'shelter_name':'Posko Uji','village':'Desa Uji','validation_issues':[]}
+        first=compare_stored([candidate],stored)[0]
+        original_id=first['shelter_id']
+        baseline=json.loads(json.dumps(first['storage_baseline']))
+        first['total_people']=12
+        reviewed=compare_stored([first],stored)[0]
+        self.assertEqual(reviewed['shelter_id'],original_id)
+        self.assertEqual(reviewed['storage_baseline'],baseline)
+        self.assertEqual(reviewed['total_people'],12)
+
+    def test_new_candidate_still_rejects_another_officer_inserting_same_location(self):
+        stored={'header':['posko','desa','shelter_id','disaster_id'],
+                'rows':[['Posko Lain','Desa Lain','existing-id','']]}
+        candidate=compare_stored([{'shelter_name':'Posko Uji','village':'Desa Uji'}],stored)[0]
+        changed={**stored,'rows':stored['rows']+[['Posko Uji','Desa Uji','another-officer-id','']]}
+        with self.assertRaisesRegex(ValueError,'berubah'):
+            compare_stored([candidate],changed)
+
     def test_native_row_snapshots_preserve_decimal_stock_and_independent_approval_references(self):
         records=[{'report_id':'R001','shelter_name':'A','stock':{'air_liter_per_hari':300.0}}, {'report_id':'R002','shelter_name':'B','stock':{}}]
         parent=load_snapshot(save_candidate_snapshot({'records':records,'report_records':records,'issues':[]}))

@@ -1,3 +1,4 @@
+import {StatusBadge} from './ui/StatusBadge';
 import {ChevronRight,AlertTriangle} from 'lucide-react';
 import type {Shelter} from './demo';
 import {metrics} from './needs';
@@ -6,7 +7,7 @@ import {metricSummary,shelterKey} from './chartData';
 const number=(n:number)=>n.toLocaleString('id-ID',{maximumFractionDigits:1});
 export function NeedSummaryCard({shelters}:{shelters:Shelter[]}){
   return <section className="need-summary-card" aria-label="Ringkasan Kebutuhan Darurat">
-    <div className="need-summary-header"><h3 className="need-summary-title">Kebutuhan hasil hitung</h3><span className="need-summary-badge">Hasil perhitungan server</span></div>
+    <div className="need-summary-header"><h3 className="need-summary-title">Kebutuhan hasil hitung</h3><StatusBadge className="need-summary-badge">Hasil perhitungan server</StatusBadge></div>
     <p className="need-summary-subtitle">Total kebutuhan dalam liter, energi, jamban, dan luas hunian; berbeda dari jumlah posko yang melapor.</p>
     <div className="need-summary-list">{metrics.map(metric=>{
       const summary=metricSummary(shelters,metric.key);

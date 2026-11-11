@@ -9,7 +9,7 @@ import type {
 } from "./repo.js";
 import type { Repository } from "./contract.js";
 import { SupabaseGateway } from "../supabase/client.js";
-import { mapConcurrent, type WorkspaceState } from "./workspace.js";
+import { mapConcurrent, checkedWorkspaceState, type WorkspaceState, type SubmissionState } from "./workspace.js";
 type Param<K extends keyof SigapRepository> = SigapRepository[K] extends (
     ...args: infer A
 ) => any
@@ -82,13 +82,36 @@ export class SupabaseRepository implements Repository {
         await this.patch("sessions", sessionId, { last_active_at: now() });
     }
     async getActiveBatch(sessionId: string) {
+        const result=await this.gateway.call<BatchRecord[]|WorkspaceState>("entity.list",{
+            kind:"batches",filter:{session_id:sessionId},workspace_state:true,active_only:true,workspace_cutoff:now(),
+        });
+        if(!Array.isArray(result))return checkedWorkspaceState(result,sessionId,true).activeBatch;
         return (
-            (await this.list<BatchRecord>("batches", { session_id: sessionId }))
+            result.filter(b=>b.session_id===sessionId)
                 .filter((b) =>
                     ["processing", "saving", "verifying"].includes(b.status),
                 )
                 .at(-1) ?? null
         );
+    }
+    async getSubmissionState(sessionId:string,requestId:string):Promise<SubmissionState> {
+        const encodedRequestId=sessionId+":"+requestId;
+        const result=await this.gateway.call<SubmissionState|BatchRecord[]>("entity.list",{
+            kind:"batches",filter:{session_id:sessionId},submission_state:true,request_id:encodedRequestId,
+        });
+        // Pre-upgrade gateways return the legacy list. Derive all checks from that
+        // one session-scoped response instead of repeating full-history downloads.
+        if(Array.isArray(result)){
+            const batches=result.filter(batch=>batch.session_id===sessionId);
+            return {existingBatch:batches.find(batch=>batch.request_id===encodedRequestId)??null,
+                activeBatchId:batches.filter(batch=>["processing","saving","verifying"].includes(batch.status)).at(-1)?.batch_id??null,
+                firstTurn:batches.length===0};
+        }
+        if(!result||typeof result.firstTurn!=="boolean"||
+            !(result.activeBatchId===null||typeof result.activeBatchId==="string"&&result.activeBatchId.length>0)||
+            !(result.existingBatch===null||result.existingBatch?.session_id===sessionId&&result.existingBatch.request_id===encodedRequestId&&typeof result.existingBatch.batch_id==="string")||
+            result.firstTurn&&(result.existingBatch!==null||result.activeBatchId!==null))throw new Error("Invalid submission state");
+        return result;
     }
     async countBatches(sessionId: string) {
         return (await this.list("batches", { session_id: sessionId })).length;
@@ -146,6 +169,13 @@ export class SupabaseRepository implements Repository {
             if (extra?.[k] !== undefined) patch[k] = extra[k];
         await this.patch("batches", batchId, patch);
     }
+    async updateBatchPayload(batchId: string, extra: Param<"updateBatchPayload">[1]): Promise<void> {
+        const patch: Record<string, unknown> = {updated_at: now()};
+        for (const key of ["preview_payload_json", "gap_payload_json", "bulletin_payload_json"] as const)
+            if (extra[key] !== undefined) patch[key] = extra[key];
+        if (!await this.patch("batches", batchId, patch)) throw new Error("Batch not found");
+    }
+
     appendEvent(params: Param<"appendEvent">[0]): Promise<EventRecord> {
         return this.put("events", id(), {
             event_id: 0,
@@ -157,11 +187,25 @@ export class SupabaseRepository implements Repository {
             created_at: now(),
         });
     }
+    async getLatestEventId(sessionId: string): Promise<number> {
+        const result = await this.gateway.call<number | EventRecord[]>("entity.list", {
+            kind: "events", filter: {session_id: sessionId}, latest_event_id: true,
+        });
+        // Older gateways ignore the option and return the original event list.
+        const cursor = Array.isArray(result)
+            ? result.filter(e => e.session_id === sessionId).reduce((latest, e) => Math.max(latest, e.event_id), 0)
+            : result;
+        if (!Number.isSafeInteger(cursor) || cursor < 0) throw new Error("Invalid event cursor");
+        return cursor;
+    }
+
     async getEventsAfter(sessionId: string, afterEventId = 0) {
         return (
-            await this.list<EventRecord>("events", { session_id: sessionId })
+            await this.gateway.call<EventRecord[]>("entity.list", {
+                kind: "events", filter: {session_id: sessionId}, after_event_id: afterEventId,
+            })
         )
-            .filter((e) => e.event_id > afterEventId)
+            .filter((e) => e.session_id === sessionId && e.event_id > afterEventId)
             .sort((a, b) => a.event_id - b.event_id);
     }
     async saveSnapshot(
@@ -185,8 +229,21 @@ export class SupabaseRepository implements Repository {
             latest_snapshot_id: params.snapshotId,
             latest_snapshot_sha256: params.snapshotSha256,
             quality_status: params.qualityStatus,
+            preview_payload_json: snapshot.payload_json,
         });
         return snapshot;
+    }
+    async getOrCreateReviewSnapshot(params:Param<"getOrCreateReviewSnapshot">[0]):Promise<{created:boolean;snapshot:SnapshotRecord}> {
+        const stamp=now();
+        const snapshot:SnapshotRecord={snapshot_id:params.snapshotId,snapshot_sha256:params.snapshotSha256,
+            batch_id:params.batchId,version:1,quality_status:params.qualityStatus,payload_json:JSON.stringify(params.payload),
+            created_at:stamp,expires_at:new Date(Date.now()+86400000).toISOString(),superseded_by:null};
+        const result=await this.gateway.call<{created:boolean;snapshot:SnapshotRecord}>("review.prepare",{session_id:params.sessionId,snapshot});
+        if(!result||typeof result.created!=="boolean"||!result.snapshot||result.snapshot.snapshot_id!==params.snapshotId||typeof result.snapshot.payload_json!=="string")
+            throw new Error("Invalid review preparation result");
+        if(result.created&&(result.snapshot.batch_id!==params.batchId||result.snapshot.snapshot_sha256!==params.snapshotSha256||result.snapshot.payload_json!==snapshot.payload_json||result.snapshot.superseded_by!==null))
+            throw new Error("Review preparation changed the validated snapshot");
+        return result;
     }
     getSnapshot(snapshotId: string) {
         return this.get<SnapshotRecord>("snapshots", snapshotId);
@@ -199,9 +256,11 @@ export class SupabaseRepository implements Repository {
                 await this.supersedeSnapshot(s.snapshot_id, newSnapshotId);
     }
     async getWorkspaceState(sessionId: string): Promise<WorkspaceState> {
-        const batches = await this.list<BatchRecord>("batches", {
-            session_id: sessionId,
+        const result=await this.gateway.call<BatchRecord[]|WorkspaceState>("entity.list",{
+            kind:"batches",filter:{session_id:sessionId},workspace_state:true,workspace_cutoff:now(),
         });
+        if(!Array.isArray(result))return checkedWorkspaceState(result,sessionId);
+        const batches=result.filter(batch=>batch.session_id===sessionId);
         const cutoff = now();
         const groups = await mapConcurrent(
             batches.filter((b) => b.status === "ready_for_review"),

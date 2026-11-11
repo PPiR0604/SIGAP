@@ -48,14 +48,20 @@ export class AuthService {
             claims.exp * 1000 <= Date.now()
         )
             throw new AccessError(401, "UNAUTHORIZED");
-        if (
-            !(await this.gateway.call("session.valid", {
+        // Independent live reads share one network wait. Do not provision a
+        // profile until the session has passed revocation checks.
+        const [sessionCheck, profileRead] = await Promise.allSettled([
+            this.gateway.call<boolean>("session.valid", {
                 session_id: claims.session_id,
                 user_id: user.id,
-            }))
-        )
+            }),
+            this.gateway.call<Membership | null>("profile.get", { user_id: user.id }),
+        ]);
+        if (sessionCheck.status === "rejected") throw sessionCheck.reason;
+        if (!sessionCheck.value)
             throw new AccessError(401, "SESSION_REVOKED");
-        let membership = await this.gateway.call<Membership>("profile.ensure", {
+        if (profileRead.status === "rejected") throw profileRead.reason;
+        let membership = profileRead.value ?? await this.gateway.call<Membership>("profile.ensure", {
             user_id: user.id,
             display_name: user.user_metadata?.display_name ?? "",
         });
@@ -121,17 +127,23 @@ export class AuthService {
         sessionId: string,
         contextId: string,
     ) {
-        if (
-            !(await this.gateway.call("session.valid", {
+        // Both checks must finish successfully on every call; no permission
+        // cache survives this operation or masks revocation/role changes.
+        const [sessionCheck, scopeCheck] = await Promise.allSettled([
+            this.gateway.call<boolean>("session.valid", {
                 session_id: sessionId,
                 user_id: userId,
-            }))
-        )
+            }),
+            this.gateway.call("scope.check", {
+                actor_id: userId,
+                context_id: contextId,
+            }),
+        ]);
+        if (sessionCheck.status === "rejected") throw sessionCheck.reason;
+        if (!sessionCheck.value)
             throw new AccessError(401, "SESSION_REVOKED");
-        return this.gateway.call("scope.check", {
-            actor_id: userId,
-            context_id: contextId,
-        });
+        if (scopeCheck.status === "rejected") throw scopeCheck.reason;
+        return scopeCheck.value;
     }
     capability(
         p: Principal,

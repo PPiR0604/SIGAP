@@ -37,7 +37,7 @@ test('web → LLM → Langflow: kandidat sintetis, kalkulasi, dan HITL tanpa wri
   const token = await page.evaluate(() => localStorage.getItem('sigap_token'));
   const headers = { Authorization: `Bearer ${token}` };
   const health = await (await page.request.get('/api/health')).json();
-  expect(['gemini','openai']).toContain(health.agent);
+  expect(['gemini','openai','watsonx']).toContain(health.agent);
   await testInfo.attach('live-provider',{contentType:'application/json',body:Buffer.from(JSON.stringify({agent:health.agent,model:health.model}))});
   expect(health.mode).toBe('live');
   const text = '21/10/2026 16.00 - Relawan: Posko Uji Playwright di Desa Uji Otomatis. Total 10 jiwa: 4 laki-laki dan 6 perempuan. Lansia 1, disabilitas 0. Butuh air bersih dan beras. Data sintetis untuk pengujian, bukan laporan operasional.';

@@ -7,15 +7,8 @@ import {splitRowSnapshots,snapshotHash} from '../src/pipeline/rowDrafts.js';
 import {SupabaseGateway} from '../src/supabase/client.js';
 import {compactToolResult} from '../src/gemini/context.js';
 import {storageRecords} from '../src/pipeline/storageDocument.js';
-import {isClearlyReport} from '../src/pipeline/corrections.js';
 import {parseExtraction} from '../src/gemini/extraction.js';
-
-test('report routing excludes ordinary questions and includes clear field reports',()=>{
- assert.equal(isClearlyReport('Posko Harapan: 98 jiwa, butuh air'),true);
- assert.equal(isClearlyReport('Berapa jumlah jiwa di Posko Harapan?'),false);
- assert.equal(isClearlyReport('Tolong cek kebutuhan air di semua posko'),false);
- for(const text of ['Cek posko yang butuh air','Mohon periksa Posko Harapan dengan 98 jiwa','Posko Harapan butuh air?','Coba tampilkan kebutuhan 2 posko','Bisa hitung jumlah jiwa posko?'])assert.equal(isClearlyReport(text),false,text);
-});
+import {extractionPrompt} from '../src/gemini/extractionPrompt.js';
 
 test('extraction rejects malformed, duplicate, foreign, oversized, nonfinite and privileged data',()=>{
  const ids=new Set(['R001']);
@@ -26,7 +19,9 @@ test('extraction rejects malformed, duplicate, foreign, oversized, nonfinite and
 });
 
 test('fast report prepares and validates with exactly one model extraction and no write',async()=>{
- const mcp=await scenarioMcp(name=>name==='sigap_1_prepare_needs'?{content:[{type:'text',text:'<<<SOURCE_REF>>>{"batch_id":"source","source_sha256":"hash"}<<<END_SOURCE_REF>>>\n\n[R001] waktu=tidak diketahui | pelapor=-\nPosko Uji 10 jiwa'}]}:undefined);
+ const report='[R001] waktu=tidak diketahui | pelapor=-\nPosko Uji 10 jiwa';
+ const raw='TEMPLATE-ONLY: '+extractionPrompt+'\n[R999] template example\n<<<SOURCE_REF>>>{"batch_id":"source","source_sha256":"hash"}<<<END_SOURCE_REF>>>\n\n'+report;
+ const mcp=await scenarioMcp(name=>name==='sigap_1_prepare_needs'?{content:[{type:'text',text:raw.replace(/\n\n/g,'\n').replace(/\n/g,'\n\n')},{type:'text',text:raw}]}:undefined);
  const script=scriptedModel([{role:'model',parts:[{text:JSON.stringify({records:[{report_id:'R001',shelter_name:'Posko Uji',total_people:10}]})}]}]);
  const runtime=new GeminiAgentRuntime({apiKey:'test-key',model:'test'},script.model);
  try{
@@ -34,6 +29,7 @@ test('fast report prepares and validates with exactly one model extraction and n
   const events:any[]=[];
   await runtime.sendPrompt({sessionId:'fast',batchId:'batch',requestId:'request',prompt:'',operation:'prepare',filteredText:'Posko Uji 10 jiwa',fastExtraction:true},e=>{events.push(e);},async()=>({allow:true}));
   assert.equal(script.inputs.length,1);assert.deepEqual(script.inputs[0].tools,[]);
+  assert.deepEqual(script.inputs[0].contents,[{role:'user',parts:[{text:report}]}]);
   const calls=mcp.requests.filter(r=>r.method==='tools/call');
   assert.deepEqual(calls.map(r=>r.params.name),['sigap_1_prepare_needs','sigap_2_validate_needs']);
   assert.deepEqual(JSON.parse(calls[1].params.arguments.input_value),{batch_id:'source',source_sha256:'hash',records:[{report_id:'R001',shelter_name:'Posko Uji',total_people:10}]});
@@ -42,6 +38,44 @@ test('fast report prepares and validates with exactly one model extraction and n
   const context=JSON.stringify(script.inputs[1].contents);
   assert.match(context,/Posko Uji/);assert.match(context,/Belum disimpan/);assert.match(context,new RegExp(id));
  }finally{await runtime.shutdown();await mcp.close();}
+});
+
+test('conflicting preparation outputs stop before extraction or validation',async()=>{
+ const raw='<<<SOURCE_REF>>>{"batch_id":"source","source_sha256":"hash"}<<<END_SOURCE_REF>>>\n\n[R001] Posko Uji 10 jiwa';
+ const mcp=await scenarioMcp(name=>name==='sigap_1_prepare_needs'?{content:[{type:'text',text:raw},{type:'text',text:raw.replace('10 jiwa','20 jiwa')}]}:undefined);
+ const script=scriptedModel([]),runtime=new GeminiAgentRuntime({apiKey:'test-key',model:'test'},script.model);
+ try{
+  await runtime.initSession({sessionId:'ambiguous',contextId:'test',mcpServerConfig:[{name:'langflow',type:'http',url:mcp.url,headers:[]}]});
+  await assert.rejects(runtime.sendPrompt({sessionId:'ambiguous',batchId:'batch',requestId:'request',operation:'prepare',prompt:'',filteredText:'Posko Uji 10 jiwa',fastExtraction:true},()=>{},async()=>({allow:true})),/Keluaran sumber Langflow berbeda/);
+  assert.equal(script.inputs.length,0);
+  assert.deepEqual(mcp.requests.filter(r=>r.method==='tools/call').map(r=>r.params.name),['sigap_1_prepare_needs']);
+ }finally{await runtime.shutdown();await mcp.close();}
+});
+
+test('report IDs in template instructions cannot substitute for missing source reports',async()=>{
+ const mcp=await scenarioMcp(name=>name==='sigap_1_prepare_needs'?{content:[{type:'text',text:'[R001] template example\n<<<SOURCE_REF>>>{"batch_id":"source","source_sha256":"hash"}<<<END_SOURCE_REF>>>\n\nTidak ada header laporan.'}]}:undefined);
+ const script=scriptedModel([]),runtime=new GeminiAgentRuntime({apiKey:'test-key',model:'test'},script.model);
+ try{
+  await runtime.initSession({sessionId:'template-id',contextId:'test',mcpServerConfig:[{name:'langflow',type:'http',url:mcp.url,headers:[]}]});
+  await assert.rejects(runtime.sendPrompt({sessionId:'template-id',batchId:'batch',requestId:'request',prompt:'',operation:'prepare',filteredText:'Posko Uji 10 jiwa',fastExtraction:true},()=>{},async()=>({allow:true})),/ID sumber/);
+  assert.equal(script.inputs.length,0);
+  assert.deepEqual(mcp.requests.filter(r=>r.method==='tools/call').map(r=>r.params.name),['sigap_1_prepare_needs']);
+ }finally{await runtime.shutdown();await mcp.close();}
+});
+
+test('omitted names use only a unique explicit name from the matching source report',()=>{
+ const parse=(records:unknown[],source:string)=>parseExtraction(JSON.stringify({records}),new Set(['R001','R002']),10000,source);
+ const source='[R001] waktu=tidak diketahui | pelapor=-\nLaporan uji: Posko Uji Latensi Klasifikasi di Desa Uji Latensi. Total 10 jiwa.\n[R002] waktu=tidak diketahui | pelapor=-\nPosko Mawar, Desa Sukamaju. Total 20 jiwa.';
+ const result=parse([{report_id:'R001',total_people:10},{report_id:'R002',shelter_name:null,total_people:20}],source);
+ assert.equal(result[0].shelter_name,'Posko Uji Latensi Klasifikasi');
+ assert.equal(result[1].shelter_name,'Posko Mawar');
+ assert.equal(parse([{report_id:'R001',shelter_name:'Uji Latensi Klasifikasi'}],source)[0].shelter_name,'Posko Uji Latensi Klasifikasi');
+ assert.equal(parse([{report_id:'R001',shelter_name:'Mawar'}],source)[0].shelter_name,'Mawar','A name from another source report must not be substituted');
+ assert.equal(parse([{report_id:'R001',shelter_name:'Harapan'}],'[R001] waktu=-\nPosko Harapan di Desa A dan Posko Mawar di Desa B.')[0].shelter_name,'Harapan','Ambiguous source names are never inferred');
+ assert.equal(parse([{report_id:'R001',shelter_name:'Nama dari model'}],source)[0].shelter_name,'Nama dari model');
+ assert.equal(parse([{report_id:'R001'}],'[R001] waktu=-\nTotal 10 jiwa, nama belum diketahui.')[0].shelter_name,undefined);
+ assert.equal(parse([{report_id:'R001'}],'[R001] waktu=-\nPosko A, 10 jiwa. Posko B, 20 jiwa.')[0].shelter_name,undefined);
+ assert.equal(parse([{report_id:'R001'}],'[R002] waktu=-\nPosko Lain, 20 jiwa.')[0].shelter_name,undefined);
 });
 
 test('fast extraction rejects invented report IDs before validation',async()=>{
@@ -126,6 +160,26 @@ test('approved commit dispatches exact approved payload and verifies effective r
   assert.deepEqual(JSON.parse(calls[0].params.arguments.input_value),payload);
   assert.deepEqual(JSON.parse(calls[1].params.arguments.input_value),{action:'all',expected_snapshot_id:id,expected_snapshot_sha256:sha});
  }finally{await runtime.shutdown();await mcp.close();}
+});
+
+test('capable validator prepares structured corrections in one guarded call with zero model use',async()=>{
+ for(const includeCalculation of [false,true]){
+ const mcp=await scenarioMcp(undefined,{'sigap_2_validate_needs':'sigap:structured-source-v1'+(includeCalculation?' sigap:validated-calculation-v1':'')});
+ const script=scriptedModel([]),runtime=new GeminiAgentRuntime({apiKey:'test-key',model:'test'},script.model);
+ const source={report_text:'Mohon klarifikasi laporan R001 (Posko Uji): jumlah jiwa: 12.',candidate_target:{snapshot_id:id,snapshot_sha256:sha,record_index:0}};
+ const options={sessionId:'combined',batchId:'batch',requestId:'request',prompt:'',operation:'prepare' as const,filteredText:JSON.stringify(source),structuredRecord:{shelter_name:'Posko Uji',total_people:12}};
+ try{
+  await runtime.initSession({sessionId:'combined',contextId:'test',mcpServerConfig:[{name:'langflow',type:'http',url:mcp.url,headers:[]}]});
+  const events:any[]=[];
+  await runtime.sendPrompt(options,e=>{events.push(e);},async()=>({allow:true}));
+  const calls=mcp.requests.filter(r=>r.method==='tools/call');
+  assert.equal(calls.length,1);assert.equal(calls[0].params.name,'sigap_2_validate_needs');
+  assert.deepEqual(JSON.parse(calls[0].params.arguments.input_value),{source_request:source,records:[{...options.structuredRecord,report_id:'R001'}],...(includeCalculation?{include_calculation:true}:{})});
+  assert.equal(script.inputs.length,0);assert.equal(events.filter(e=>e.event_type==='preview_ready').length,1);
+  await assert.rejects(runtime.sendPrompt(options,()=>{},async()=>({allow:false,reason:'Permission revoked'})),/Permission revoked/);
+  assert.equal(mcp.requests.filter(r=>r.method==='tools/call').length,1);
+ }finally{await runtime.shutdown();await mcp.close();}
+ }
 });
 
 test('separate row snapshots retain independent data, provenance and immutable hashes',async()=>{

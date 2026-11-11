@@ -1,6 +1,6 @@
 # Backend SIGAP
 
-Backend Fastify/TypeScript menghubungkan antarmuka, Supabase Auth, gateway data, model, dan tool Langflow melalui MCP. Konfigurasi utama berasal dari `.env` root; gunakan `.env.example` sebagai template tanpa kredensial.
+Backend Fastify/TypeScript menghubungkan antarmuka, Supabase Auth, gateway data, model, dan tool Langflow melalui MCP. Untuk demo satu komputer, gunakan [paket lokal](../deployment/local/README.md). Pengembangan native dan Docker cloud memakai `.env` root; Docker lokal memakai `.env.sigap-local`.
 
 ## Arsitektur dan keamanan
 
@@ -12,18 +12,36 @@ Backend menerbitkan capability singkat untuk flow Supabase dan gateway memakai a
 
 ## Konfigurasi dan menjalankan
 
-Isi `SIGAP_SUPABASE_URL`, `SIGAP_SUPABASE_PUBLISHABLE_KEY`, `SIGAP_SUPABASE_GATEWAY_SECRET`, `SIGAP_ORGANIZATION_ID`, URL/key MCP dan konfigurasi model pada `.env` root. Untuk OpenAI-compatible gunakan `SIGAP_AGENT_PROVIDER=openai`, `SIGAP_OPENAI_BASE_URL`, `SIGAP_OPENAI_MODEL`, dan key; untuk Gemini pilih `gemini` dan isi konfigurasi Gemini. Jangan menganggap model di contoh tersedia di setiap provider.
+Untuk pengembangan native/cloud, isi `SIGAP_SUPABASE_URL`, `SIGAP_SUPABASE_PUBLISHABLE_KEY`, `SIGAP_SUPABASE_GATEWAY_SECRET`, `SIGAP_ORGANIZATION_ID`, URL/key MCP, dan konfigurasi model pada `.env` root. Jangan menganggap model di template tersedia di setiap provider.
+
+| Provider | Konfigurasi |
+| --- | --- |
+| `watsonx` | `SIGAP_WATSONX_URL`, `SIGAP_WATSONX_PROJECT_ID`, `SIGAP_WATSONX_API_KEY`, `SIGAP_WATSONX_MODEL` |
+| `openai` | `SIGAP_OPENAI_BASE_URL`, `SIGAP_OPENAI_MODEL`, `SIGAP_OPENAI_API_KEY`; endpoint kompatibel OpenAI yang dibatasi ke host lokal oleh kode |
+| `gemini` | `GEMINI_API_KEY`, `GEMINI_MODEL`, dan batas kuota bila diperlukan |
+| `bob` | Konfigurasi ACP/MCP; jalur Supabase adapter backend tetap fail-closed |
+| `mock` | Fixture pengujian; bukan pengganti runtime produksi |
+
+Pilih dengan `SIGAP_AGENT_PROVIDER`. Dukungan runtime tidak berarti semua variabel provider diteruskan setiap file Compose; paket lokal saat ini menyediakan watsonx dan OpenAI-compatible. Periksa file Compose yang dipakai.
 
 ```powershell
-# Dari root
- docker compose up -d --build
-# Pengembangan native
- cd backend
- npm ci
- npm start
+# Cloud yang sudah diprovisioning, dari root
+docker compose up -d --build
+# Pengembangan native, dari root
+cd backend
+npm ci
+npm start
 ```
 
-Backend Docker dipublikasikan pada port 8787. Langflow di host perlu dapat mengakses backend melalui `SIGAP_BACKEND_INTERNAL_URL`. Setelah mengubah `.env`, buat ulang container backend agar environment dibaca ulang. Registrasi memakai password minimal 8 karakter; respons menentukan apakah ruang latihan siap atau akses masih pending. Registrasi tanpa email mengharuskan Confirm email dimatikan di Supabase.
+Backend native dan Compose cloud memakai port 8787. Pada paket lokal, backend diakses melalui proxy frontend port 8080 dan jaringan internal Docker. Langflow di host perlu dapat mengakses backend melalui `SIGAP_BACKEND_INTERNAL_URL`. Setelah mengubah environment, buat ulang container backend agar nilainya dibaca ulang. Registrasi memakai password minimal 8 karakter; respons menentukan apakah ruang latihan siap atau akses masih pending. Registrasi tanpa email mengharuskan Confirm email dimatikan di Supabase; ini pilihan deployment, bukan ketentuan untuk semua instalasi.
+
+## Pemilihan tool dan hasil analisis
+
+Pesan teks biasa dipahami model sebelum memilih tool. Backend tidak memakai daftar kata tanya untuk memaksa pesan menjadi laporan. Tool `analyze_shelter_needs` pada [analysisTool.ts](src/pipeline/analysisTool.ts) mengomposisi pembacaan dan kalkulasi Langflow dengan parameter `view` serta `scope` yang tervalidasi. Ini bukan flow baru atau pengganti tujuh flow modular.
+
+Analisis seluruh kebutuhan, ranking air, dan prioritas umum disajikan dari hasil kalkulator yang telah diperiksa. Model tidak menyusun ulang angka pada langkah akhir tool ini. Akses tetap melewati pemeriksaan sesi dan penugasan. Hasil dengan referensi, cakupan, atau identitas yang tidak sesuai dihentikan.
+
+Laporan teks memakai pemilihan tool model. Impor CSV, formulir terstruktur, dan koreksi bertarget mempertahankan jalur validasi khusus. Writer tetap dibatasi pada kelanjutan persetujuan server. Publikasi buletin memiliki persetujuan tersendiri.
 
 ## Pengujian
 

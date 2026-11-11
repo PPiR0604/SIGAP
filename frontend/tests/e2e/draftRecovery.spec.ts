@@ -12,6 +12,7 @@ test('refresh restores independent drafts and numeric clarification sends struct
  await page.route('**/api/contexts',r=>r.fulfill({json:[{context_id:'posko-uji',name:'Pos Komando Uji'}]}));
  await page.route('**/api/sessions',r=>r.fulfill({json:{session_id:'resumed-session',context_id:'posko-uji',resumed:true}}));
  await page.route('**/api/sessions/*/recovery',r=>r.fulfill({json:{records:[a,b],reviews,after_event_id:7}}));
+ await page.route('**/api/sessions/*/overview',r=>r.fulfill({json:{status:'partial',records:[a,b],calculation:null}}));
  await page.route('**/api/sessions/*/events',r=>{expect(r.request().headers()['last-event-id']).toBe('7');return r.fulfill({contentType:'text/event-stream',body:': keep-alive\n\n'});});
  await page.goto('/');
  await expect(page.getByRole('heading',{name:'Masuk ke SIGAP'})).toBeVisible();

@@ -8,12 +8,13 @@ async function workspace(page:Page,initial:Record<string,unknown>[]=records){
   let next=0;const events:{id:number;body:string}[]=[];
   const emit=(records:Record<string,unknown>[])=>{const id=++next;events.push({id,body:`id: ${id}\nevent: stored_rekap_ready\ndata: ${JSON.stringify({records})}\n\n`});};
   await page.route('**/api/sessions/*/events',r=>r.fulfill({contentType:'text/event-stream',body:events.filter(e=>e.id>Number(r.request().headers()['last-event-id']||0)).map(e=>e.body).join('')||': keepalive\n\n'}));
-  emit(initial);await page.goto('/');await expect(page.getByRole('button',{name:'Backend Mock',exact:true})).toBeVisible();
+  emit(initial);await page.goto('/');await expect(page.getByRole('heading',{name:'Tugas petugas',exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Rekap',exact:true}).click();
   return emit;
 }
 const summary=(page:Page)=>page.getByRole('region',{name:'Kebutuhan yang dilaporkan',exact:true});
-const recap=(page:Page)=>page.getByRole('region',{name:'Tabel rekap posko',exact:true});
+const recap=(page:Page)=>(page.viewportSize()?.width??1280)<=760?page.locator('.recap-mobile-list'):page.getByRole('region',{name:'Tabel rekap posko',exact:true});
+const recapRows=(page:Page)=>recap(page).locator((page.viewportSize()?.width??1280)<=760?'article':'tbody tr');
 
 test('tabel kebutuhan menggunakan penyebut posko, urutan jumlah, dan aksi yang terlihat',async({page},info)=>{
   if(info.project.name.startsWith('mobile'))await page.setViewportSize({width:320,height:812});
@@ -28,6 +29,20 @@ test('tabel kebutuhan menggunakan penyebut posko, urutan jumlah, dan aksi yang t
     else{await expect(row.getByRole('button')).toHaveCount(0);await expect(row).toContainText('Belum dilaporkan');}
   }
   await expect(card).not.toContainText('%');
+  // Row headers must inherit hover/selection from the row, not paint a gray column.
+  const layout=await card.locator('table').evaluate(table=>{
+    const row=table.querySelector('tbody tr')!;
+    const cells=Array.from(row.children);
+    const headers=Array.from(table.querySelectorAll('thead th'));
+    return {
+      rowHeadingBackground:getComputedStyle(cells[0]).backgroundColor,
+      aligned:cells.every((cell,i)=>Math.abs(cell.getBoundingClientRect().left-headers[i].getBoundingClientRect().left)<1),
+      clipped:cells.some(cell=>cell.scrollWidth>cell.clientWidth+1),
+    };
+  });
+  expect(layout.rowHeadingBackground).toBe('rgba(0, 0, 0, 0)');
+  expect(layout.aligned).toBe(true);
+  expect(layout.clipped).toBe(false);
   const gap=await card.getByRole('row').filter({has:page.getByRole('rowheader',{name:'Tenda & hunian',exact:true})}).evaluate(row=>{
     const label=document.createRange(),value=document.createRange();label.selectNodeContents(row.children[0]);value.selectNodeContents(row.children[1]);
     return value.getBoundingClientRect().left-label.getBoundingClientRect().right;
@@ -49,7 +64,7 @@ test('aksi keyboard membuka posko sesuai kategori, fokus hasil, CSV, detail, dan
   await expect(page.getByLabel('Filter desa')).toHaveValue('');
   await expect(page.getByLabel('Filter status')).toHaveValue('Semua status');
   await expect(page.getByRole('group',{name:'Jenis rekap'}).getByRole('button',{name:'Posko',exact:true})).toHaveClass('selected');
-  await expect(recap(page).locator('tbody tr')).toHaveCount(6);
+  await expect(recapRows(page)).toHaveCount(6);
   const results=page.getByLabel('Hasil filter rekap',{exact:true});
   await expect(results).toBeFocused();await expect(results).toContainText('Air bersih · 6 posko ditampilkan');
   const positions=await page.evaluate(()=>({anchor:document.querySelector('.recap-filter-summary')!.getBoundingClientRect().top,header:document.querySelector('.app-header')!.getBoundingClientRect().bottom}));
@@ -58,10 +73,10 @@ test('aksi keyboard membuka posko sesuai kategori, fokus hasil, CSV, detail, dan
   const file=await downloaded;const csv=await readFile((await file.path())!,'utf8');
   expect(csv).toContain('Posko Uji 1');expect(csv).toContain('Posko Uji 6');expect(csv).not.toContain('Posko Uji 7');
   await recap(page).getByRole('button',{name:'Posko Uji 1',exact:true}).click();
-  await expect(page.getByRole('dialog').getByRole('heading',{name:'Posko Uji 1',exact:true})).toBeVisible();
-  await page.getByRole('button',{name:'Tutup dialog',exact:true}).click();
+  await expect(page.getByRole('region',{name:'Halaman klarifikasi posko',exact:true}).getByRole('heading',{name:'Posko Uji 1',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Kembali',exact:true}).click();
   await page.getByRole('button',{name:'Hapus filter kebutuhan',exact:true}).click();
-  await expect(recap(page).locator('tbody tr')).toHaveCount(9);await expect(action).toHaveAttribute('aria-pressed','false');
+  await expect(recapRows(page)).toHaveCount(9);await expect(action).toHaveAttribute('aria-pressed','false');
   expect(writes).toBe(0);
 });
 
@@ -69,25 +84,25 @@ test('filter mengikuti pembaruan kebutuhan dan pintasan pemeriksaan tidak membaw
   const source=records.map((r,i)=>i===8?{...r,total_people:101}:r);
   const emit=await workspace(page,source);
   await summary(page).getByRole('button',{name:'Lihat 6 posko yang melaporkan Air bersih',exact:true}).click();
-  await expect(recap(page).locator('tbody tr')).toHaveCount(6);
+  await expect(recapRows(page)).toHaveCount(6);
   emit(source.map((r,i)=>i===0?{...r,urgent_needs:['beras','obat']}:r));
   await expect(summary(page).getByRole('button',{name:'Lihat 5 posko yang melaporkan Air bersih',exact:true})).toBeVisible();
-  await expect(recap(page).locator('tbody tr')).toHaveCount(5);
+  await expect(recapRows(page)).toHaveCount(5);
   await page.getByRole('button',{name:'1 posko perlu diperiksa. Periksa',exact:true}).click();
   await expect(page.getByRole('button',{name:'Hapus filter kebutuhan',exact:true})).toHaveCount(0);
-  await expect(recap(page).locator('tbody tr')).toHaveCount(1);
+  await expect(recapRows(page)).toHaveCount(1);
   await expect(recap(page)).toContainText('Posko Uji 9');
 });
 
 test('kategori lain cocok dengan laporan sebenarnya dan hasil kosong dapat dipulihkan',async({page})=>{
   const emit=await workspace(page,[{...records[0],urgent_needs:['genset']},{...records[1],urgent_needs:['air bersih','air mineral']}]);
   await summary(page).getByRole('button',{name:'Lihat 1 posko yang melaporkan Lainnya',exact:true}).click();
-  await expect(recap(page).locator('tbody tr')).toHaveCount(1);await expect(recap(page)).toContainText('genset');
+  await expect(recapRows(page)).toHaveCount(1);await expect(recap(page)).toContainText('genset');
   emit([]);
   await expect(summary(page)).toContainText('0 posko dalam rekap');
   await expect(summary(page).getByRole('button')).toHaveCount(0);
   await expect(summary(page)).not.toContainText('0 dari 0');
-  await expect(recap(page).locator('tbody tr')).toHaveCount(0);
+  await expect(recapRows(page)).toHaveCount(0);
   await page.getByRole('button',{name:'Hapus filter kebutuhan',exact:true}).click();
   await expect(page.getByLabel('Hasil filter rekap',{exact:true})).toContainText('0 dari 0 posko ditampilkan');
 });
@@ -96,9 +111,9 @@ test('jumlah kategori dan CSV meliputi seluruh halaman hasil',async({page})=>{
   const source=Array.from({length:17},(_,i)=>({...records[0],batch_id:`multi-${i}`,report_id:`R${i+1}`,shelter_name:`Posko Halaman ${i+1}`,urgent_needs:i<15?['air bersih']:['obat']}));
   await workspace(page,source);
   await summary(page).getByRole('button',{name:'Lihat 15 posko yang melaporkan Air bersih',exact:true}).click();
-  await expect(recap(page).locator('tbody tr')).toHaveCount(10);
+  await expect(recapRows(page)).toHaveCount(10);
   await page.locator('.functional-pagination').getByRole('button',{name:'Berikutnya',exact:true}).click();
-  await expect(recap(page).locator('tbody tr')).toHaveCount(5);await expect(recap(page)).toContainText('Posko Halaman 15');
+  await expect(recapRows(page)).toHaveCount(5);await expect(recap(page)).toContainText('Posko Halaman 15');
   const downloaded=page.waitForEvent('download');await page.getByRole('button',{name:'Unduh CSV',exact:true}).click();
   const csv=await readFile((await (await downloaded).path())!,'utf8');
   expect(csv).toContain('Posko Halaman 1,');expect(csv).toContain('Posko Halaman 15,');expect(csv).not.toContain('Posko Halaman 16,');

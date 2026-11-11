@@ -1,5 +1,6 @@
 import {createHash,randomBytes} from 'node:crypto';
 import type {SupabaseGateway} from '../supabase/client.js';
+import {mapConcurrent} from '../db/workspace.js';
 const stable=(v:any):any=>Array.isArray(v)?v.map(stable):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,stable(v[k])])):v;
 export const snapshotHash=(payload:unknown)=>createHash('sha256').update(JSON.stringify(stable(payload))).digest('hex');
 /** Split only an authentic immutable server snapshot, never a browser/model supplied record. */
@@ -12,14 +13,12 @@ export async function splitRowSnapshots(gateway:SupabaseGateway,actorId:string,c
  if(!Array.isArray(payload.records)||payload.records.length<2)return [];
  if(Array.isArray(payload.row_snapshot_refs)){
   if(payload.row_snapshot_refs.length!==payload.records.length)throw new Error('Referensi draf tidak lengkap.');
-  const parts=[];
-  for(const [index,ref] of payload.row_snapshot_refs.entries()){
+  return mapConcurrent(payload.row_snapshot_refs.map((ref:any,index:number)=>({ref,index})),2,async({ref,index}:{ref:any;index:number})=>{
    const child=await gateway.call('flow.load',{...args,id:ref.snapshot_id});
    const value=child?.envelope;
    if(!value||child.committed_reference||value.sha256!==ref.snapshot_sha256||value.payload.records?.length!==1||JSON.stringify(stable(value.payload.records[0]))!==JSON.stringify(stable(payload.records[index])))throw new Error('Draf tidak sesuai kandidat sumber.');
-   parts.push({...ref,records:value.payload.records,snapshot_records:value.payload.records,issues:value.payload.issues||[],snapshot_issues:value.payload.snapshot_issues||[]});
-  }
-  return parts;
+   return {...ref,records:value.payload.records,snapshot_records:value.payload.records,issues:value.payload.issues||[],snapshot_issues:value.payload.snapshot_issues||[]};
+  });
  }
  // Compatibility for pre-upgrade snapshots; fail closed if numeric canonicalization differs.
  if(snapshotHash(payload)!==reference.snapshot_sha256)throw new Error('Snapshot lama perlu divalidasi ulang.');

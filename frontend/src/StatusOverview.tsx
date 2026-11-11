@@ -1,3 +1,4 @@
+import {ActionButton} from './ui/ActionButton';
 import {useState} from 'react';
 import {ChevronRight,ClipboardCheck} from 'lucide-react';
 import type {Shelter} from './demo';
@@ -32,7 +33,7 @@ export function StatusOverview({shelters,onSelect}:{shelters:Shelter[];onSelect:
     <p className="status-list-caption">{filter==='all'?'Semua posko dalam rekap':filter==='review'?'Posko yang perlu pemeriksaan':`Posko dengan status ${filter.toLowerCase()}`}</p>
     {!rows.length&&<p className="status-list-empty">{!shelters.length?'Belum ada posko dalam rekap.':filter==='review'?'Tidak ada posko yang memerlukan pemeriksaan pada rekap ini.':'Tidak ada posko pada status ini.'}</p>}
     <ul className="status-shelter-list" aria-label="Daftar posko berdasarkan status">{rows.slice(currentPage*pageSize,(currentPage+1)*pageSize).map(s=><li key={shelterKey(s)}><button type="button" onClick={()=>onSelect(s)} aria-label={`Periksa posko ${s.name}, ${s.village}`}><div><strong>{s.name}</strong><span>{s.village}</span><span className="status-row-state">{s.status}</span><p>{reviewSummary(s.reviewItems)||s.note}</p></div><ChevronRight size={18} aria-hidden="true"/></button></li>)}</ul>
-    {pages>1&&<div className="status-pagination"><span aria-live="polite">Halaman {currentPage+1} dari {pages}</span><div role="group" aria-label="Halaman daftar status posko"><button className="button secondary" disabled={currentPage===0} onClick={()=>setPage(currentPage-1)}>Sebelumnya</button><button className="button secondary" disabled={currentPage===pages-1} onClick={()=>setPage(currentPage+1)}>Berikutnya</button></div></div>}
+    {pages>1&&<div className="status-pagination"><span aria-live="polite">Halaman {currentPage+1} dari {pages}</span><div role="group" aria-label="Halaman daftar status posko"><ActionButton className="button secondary" disabled={currentPage===0} onClick={()=>setPage(currentPage-1)}>Sebelumnya</ActionButton><ActionButton className="button secondary" disabled={currentPage===pages-1} onClick={()=>setPage(currentPage+1)}>Berikutnya</ActionButton></div></div>}
     <p className="status-overview-note">Status menunjukkan pemeriksaan data, bukan tingkat kedaruratan. Klik status untuk menyaring daftar.</p>
   </section>;
 }

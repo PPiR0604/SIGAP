@@ -23,6 +23,8 @@ export interface AgentPromptOptions {
   /** Unambiguous report input: source preparation and validation are driven by the server. */
   fastExtraction?: boolean;
   correctionBaseKey?:string;
+  /** Model-selected, read-only analysis; source selection and calculations stay server-controlled. */
+  analyzeNeeds?:(request:{view:'all_needs'|'water_ranking'|'priority_ranking';scope:'stored'|'including_candidates'})=>Promise<string>;
 }
 
 export type ApplicationEventType =
@@ -68,7 +70,7 @@ export type PermissionGate = (
 ) => Promise<PermissionDecision>;
 
 export interface AgentRuntime {
-  readonly provider?: 'bob' | 'gemini' | 'openai' | 'mock';
+  readonly provider?: 'bob' | 'gemini' | 'openai' | 'watsonx' | 'mock';
   readonly model?:string;
   isAvailable(): Promise<boolean>;
   initSession(config: AgentSessionConfig): Promise<string>;
@@ -79,7 +81,7 @@ export interface AgentRuntime {
   ): Promise<void>;
   closeSession(sessionId: string): Promise<void>;
   /** Opsional: baca rekap tersimpan langsung lewat tool baca (tanpa model). */
-  readStoredRekap?(sessionId: string, signal?: AbortSignal): Promise<{ content: Array<{ type: string; text?: string }>; isError?: boolean } | null>;
+  readStoredRekap?(sessionId: string, signal?: AbortSignal, options?:{includeCalculation?:boolean}): Promise<{ content: Array<{ type: string; text?: string }>; isError?: boolean } | null>;
   calculateNeedsForSnapshot?(sessionId:string, reference:{snapshot_id:string;snapshot_sha256:string},signal?:AbortSignal):Promise<{content:Array<{type:string;text?:string}>;isError?:boolean}>;
   shutdown?(): Promise<void>;
 }

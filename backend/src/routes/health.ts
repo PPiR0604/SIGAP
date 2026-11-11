@@ -21,7 +21,7 @@ export function createHealthRoute(
         agent,
         model:runtime.model,
         provider_status: simulated ? 'simulated' : agentAvailable && mcpConfigured ? 'configured' : 'unavailable',
-        bob: ['gemini','openai'].includes(agent) ? 'not_used' : simulated ? 'mock_mode' : agentAvailable ? 'ready' : 'unavailable',
+        bob: ['gemini','openai','watsonx'].includes(agent) ? 'not_used' : simulated ? 'mock_mode' : agentAvailable ? 'ready' : 'unavailable',
         storage: simulated ? 'simulated' : 'unverified',
         write_enabled: !simulated && agentAvailable && writeControlVerified,
         mode: simulated ? 'mock_mode' : agentAvailable && mcpConfigured ? 'live' : 'degraded',

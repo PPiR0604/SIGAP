@@ -149,6 +149,13 @@ def compare_stored(records, stored):
     """Attach exact baseline row for optimistic concurrency and human field decisions."""
     if not stored['rows']:
         for record in records:
+            baseline=record.get('storage_baseline')
+            if baseline and baseline.get('row') is not None:
+                raise ValueError('Rekap tersimpan berubah sejak kandidat pertama. Baca ulang sebelum koreksi.')
+            if not baseline:
+                absent_header=['disaster_id','posko','desa']
+                probe=[record.get({'posko':'shelter_name','desa':'village'}.get(c,c)) for c in absent_header]
+                record['storage_baseline']={'identity':identity_for(absent_header,probe,allow_incomplete=True),'row':None}
             record['shelter_id'] = record.get('shelter_id') or uuid.uuid4().hex
         return records
     header = stored['header']
@@ -157,16 +164,21 @@ def compare_stored(records, stored):
                'urgent_needs':'kebutuhan_mendesak','surplus_do_not_send':'sudah_cukup','notes':'catatan','stock':'stok_json','stock_context':'konteks_stok_json','shelter_type':'jenis_pengungsian'}
     for record in records:
         target=record.get('update_target')
+        # A candidate ID is allocated before its first save. Its baseline still
+        # describes the absence of a row at the reported location, not a stored ID.
+        # Recheck that same location so both repeat reviews and concurrent inserts
+        # are handled correctly.
+        pending_new = bool(record.get('storage_baseline')) and record['storage_baseline'].get('row') is None
         if target:
             # Renames/village changes compare against the original bound row, not the new label.
             target_probe=[target.get({'posko':'shelter_name','desa':'village','id_laporan':'report_id'}.get(c,c)) for c in header]
             key=identity_for(header,target_probe,allow_incomplete=True)
         else:
-            probe = [record.get({'posko':'shelter_name','desa':'village'}.get(c,c)) for c in header]
+            probe = [None if pending_new and c=='shelter_id' else record.get({'posko':'shelter_name','desa':'village'}.get(c,c)) for c in header]
             try: key = identity_for(header,probe)
             except ValueError: continue
         matches = [row for row in stored['rows'] if identity_for(header,row,allow_incomplete=True)==key]
-        if not target and not record.get('shelter_id'):
+        if not target and (not record.get('shelter_id') or pending_new):
             norm=lambda value: ' '.join(re.findall(r'\w+',str(value or '').casefold()))
             def same_location(row):
                 cells=dict(zip(header,row))

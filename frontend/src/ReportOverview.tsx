@@ -1,3 +1,4 @@
+import {ActionButton} from './ui/ActionButton';
 import {ChartNoAxesCombined,ChevronDown,ArrowRight,Home,Users} from 'lucide-react';
 import {StatusPie} from './StatusPie';
 import {NeedsHistogram} from './NeedsHistogram';
@@ -22,15 +23,15 @@ export function ReportOverview({shelters,hasPending,stored,onGoRekap,needsExpand
    </div>}
    <p>{hasPending?'Ada perubahan belum disimpan':stored?'Rekap tersimpan':'Rekap sesi ini'}</p>
    {unknown>0&&<p>Jumlah jiwa {unknown} posko belum diketahui.</p>}
-   <button type="button" className="button quiet" onClick={()=>onGoRekap()}>Lihat rekap<ArrowRight size={16} aria-hidden="true"/></button>
+   <ActionButton type="button" className="button quiet" onClick={()=>onGoRekap()}>Lihat rekap<ArrowRight size={16} aria-hidden="true"/></ActionButton>
   </section>
   <section className="report-independent-card" aria-label="Panel total kebutuhan">
    <div className="report-independent-heading">
     <h2>Total kebutuhan</h2>
-    <button type="button" className="button quiet preview-toggle" aria-label={`${needsExpanded?'Ciutkan':'Buka'} total kebutuhan`} aria-controls="report-needs-panel" aria-expanded={needsExpanded} onClick={onToggleNeeds}>{needsExpanded?'Ciutkan':'Buka'}<ChevronDown size={16} className={needsExpanded?'preview-chevron expanded':'preview-chevron'} aria-hidden="true"/></button>
+    <ActionButton type="button" className="button quiet preview-toggle" aria-label={`${needsExpanded?'Ciutkan':'Buka'} total kebutuhan`} aria-controls="report-needs-panel" aria-expanded={needsExpanded} onClick={onToggleNeeds}>{needsExpanded?'Ciutkan':'Buka'}<ChevronDown size={16} className={needsExpanded?'preview-chevron expanded':'preview-chevron'} aria-hidden="true"/></ActionButton>
    </div>
    <div id="report-needs-panel" className={`disclosure-motion${needsExpanded?'':' is-closed'}`} aria-hidden={!needsExpanded} inert={!needsExpanded}><div className="disclosure-inner"><div className="report-independent-content">{total?<NeedsHistogram shelters={shelters} onView={metric=>onGoRekap({metric})} onCalculate={onCalculate} busy={busy} canCalculate={canCalculate}/>:<p>Belum ada data kebutuhan.</p>}</div></div></div>
   </section>
-  <section className="report-independent-card" aria-label="Panel status pemeriksaan"><div className="report-independent-heading"><h2>Status pemeriksaan</h2><button type="button" className="button quiet preview-toggle" aria-label={`${statusExpanded?'Ciutkan':'Buka'} status pemeriksaan`} aria-controls="report-status-panel" aria-expanded={statusExpanded} onClick={onToggleStatus}>{statusExpanded?'Ciutkan':'Buka'}<ChevronDown size={16} className={statusExpanded?'preview-chevron expanded':'preview-chevron'} aria-hidden="true"/></button></div><div id="report-status-panel" className={`disclosure-motion${statusExpanded?'':' is-closed'}`} aria-hidden={!statusExpanded} inert={!statusExpanded}><div className="disclosure-inner"><div className="report-independent-content"><StatusPie compact shelters={shelters} selected="" onSelect={status=>onGoRekap({status:status as RekapFocus['status']})}/></div></div></div></section>
+  <section className="report-independent-card" aria-label="Panel status pemeriksaan"><div className="report-independent-heading"><h2>Status pemeriksaan</h2><ActionButton type="button" className="button quiet preview-toggle" aria-label={`${statusExpanded?'Ciutkan':'Buka'} status pemeriksaan`} aria-controls="report-status-panel" aria-expanded={statusExpanded} onClick={onToggleStatus}>{statusExpanded?'Ciutkan':'Buka'}<ChevronDown size={16} className={statusExpanded?'preview-chevron expanded':'preview-chevron'} aria-hidden="true"/></ActionButton></div><div id="report-status-panel" className={`disclosure-motion${statusExpanded?'':' is-closed'}`} aria-hidden={!statusExpanded} inert={!statusExpanded}><div className="disclosure-inner"><div className="report-independent-content"><StatusPie compact shelters={shelters} selected="" onSelect={status=>onGoRekap({status:status as RekapFocus['status']})}/></div></div></div></section>
  </div>;
 }

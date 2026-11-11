@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import type { Repository } from '../db/contract.js';
 import type { BatchOrchestrator } from '../pipeline/orchestrator.js';
+import {requestSession} from '../auth/requestSession.js';
 
 export function createEventsRoute(
   repo: Repository,
@@ -10,7 +11,7 @@ export function createEventsRoute(
     fastify.get('/api/sessions/:id/events', async (request, reply) => {
       const { id: sessionId } = request.params as { id: string };
 
-      const session = (await repo.getSession(sessionId));
+      const session = await requestSession(request,repo,sessionId);
       if (!session) {
         return reply.code(404).send({
           error: {
@@ -32,49 +33,65 @@ export function createEventsRoute(
       const queryLastId = (request.query as any)?.lastEventId;
       const startAfterId = Number(lastEventIdHeader || queryLastId || 0);
 
+      // Subscribe before the database read. Events committed during replay must
+      // survive the handoff, while events present in both paths are sent once.
+      let replaying=true,closed=false,checking=false,lastSentId=startAfterId;
+      let heartbeatTimer:ReturnType<typeof setInterval>|undefined;
+      const queued:any[]=[];
+      const writeLive=(ev:any)=>{
+        if(closed||ev.event_id&&ev.event_id<=lastSentId)return;
+        reply.raw.write(`id: ${ev.event_id || ''}\n`);
+        reply.raw.write(`event: ${ev.event_type}\n`);
+        reply.raw.write(`data: ${JSON.stringify(ev.payload || {})}\n\n`);
+        if(ev.event_id)lastSentId=ev.event_id;
+      };
+      const liveListener=(ev:any)=>{
+        if(ev.session_id!==sessionId||closed)return;
+        if(replaying)queued.push(ev);else writeLive(ev);
+      };
+      const cleanup=()=>{
+        closed=true;
+        if(heartbeatTimer)clearInterval(heartbeatTimer);
+        orchestrator.off('event',liveListener);
+      };
+      orchestrator.on('event',liveListener);
+      reply.raw.once('close',cleanup);
+
       // Replay existing events
-      const pastEvents = (await repo.getEventsAfter(sessionId, startAfterId));
+      let pastEvents;
+      try{pastEvents=await repo.getEventsAfter(sessionId,startAfterId);}
+      catch(error){cleanup();reply.raw.destroy(error instanceof Error?error:undefined);return;}
+      if(closed)return;
       for (const ev of pastEvents) {
+        if(ev.event_id<=lastSentId)continue;
         reply.raw.write(`id: ${ev.event_id}\n`);
         reply.raw.write(`event: ${ev.event_type}\n`);
         reply.raw.write(`data: ${ev.payload_json}\n\n`);
+        lastSentId=ev.event_id;
       }
 
       // If stream=false is specified, end response immediately (useful for tests and one-shot checks)
       if ((request.query as any)?.stream === 'false') {
+        cleanup();
         reply.raw.end();
         return;
       }
 
-      // Event listener for live events
-      const liveListener = (ev: any) => {
-        if (ev.session_id === sessionId) {
-          reply.raw.write(`id: ${ev.event_id || ''}\n`);
-          reply.raw.write(`event: ${ev.event_type}\n`);
-          reply.raw.write(`data: ${JSON.stringify(ev.payload || {})}\n\n`);
-        }
-      };
-
-      orchestrator.on('event', liveListener);
+      for(const ev of queued.sort((a,b)=>(a.event_id||0)-(b.event_id||0)))writeLive(ev);
+      queued.length=0;
+      replaying=false;
 
       // Heartbeat every 15s
-      let checking=false;
-      const heartbeatTimer = setInterval(async () => {
+      heartbeatTimer = setInterval(async () => {
         if(checking)return;checking=true;
         try {
           if(request.principal&&orchestrator.auth){if(request.principal.expiresAt<=Date.now())throw new Error('Session expired');await orchestrator.auth.stillAuthorized(request.principal.userId,request.principal.sessionId,session.context_id);}
-          reply.raw.write(': heartbeat\n\n');
+          if(!closed)reply.raw.write(': heartbeat\n\n');
         } catch {
-          clearInterval(heartbeatTimer);
-          orchestrator.off('event',liveListener);reply.raw.end();
+          cleanup();reply.raw.end();
         }finally{checking=false;}
       }, 15000);
 
-      // Cleanup when connection closes
-      request.raw.on('close', () => {
-        clearInterval(heartbeatTimer);
-        orchestrator.off('event', liveListener);
-      });
     });
   };
 }

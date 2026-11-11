@@ -145,13 +145,22 @@ def normalize_record(record: dict) -> dict:
     return rec
 
 
-def format_shelter_summary(records: list[dict], source_info: str, *, source_count=None, query="", reference=None, verification=None) -> str:
+def format_shelter_summary(records: list[dict], source_info: str, *, source_count=None, query="", reference=None, verification=None, calculation=None, response_format="human") -> str:
     source_count = len(records) if source_count is None else source_count
     metadata = {"status": "ok" if records else "no_matches" if source_count else "source_empty",
                 "source": source_info, "total_shelters": source_count, "matched_shelters": len(records), "records": records}
     metadata["verification"] = verification or {"status":"not_requested","reason":"Sertakan expected_snapshot_id/expected_snapshot_sha256 dari receipt writer untuk verifikasi aksi."}
     if reference:
         metadata.update(reference)
+    if calculation is not None:
+        metadata['validated_calculation'] = calculation
+    if response_format == 'compact':
+        # Same complete machine payload, without the redundant human summary or
+        # pretty-print whitespace. Bob's default human output stays unchanged.
+        metadata['verification_status'] = metadata['verification']['status']
+        return 'SIGAP_READ_RESULT ' + json.dumps(metadata, ensure_ascii=False, separators=(',', ':'))
+    if response_format != 'human':
+        raise ValueError('Format respons rekap tidak dikenal.')
     compact = {k: metadata[k] for k in ("status", "source", "total_shelters", "matched_shelters", "snapshot_id", "snapshot_sha256") if k in metadata}
     compact["verification_status"] = metadata["verification"]["status"]
     prefix = "SIGAP_READ_RESULT " + json.dumps(compact, ensure_ascii=False) + "\n"
@@ -321,6 +330,8 @@ class LogisticsStorageReader(Component):
             query_value = getattr(self, "query", "") or ""
             query_text = parse_query(query_value)
             request = json.loads(query_value) if query_value.strip().startswith("{") else {}
+            if request.get('response_format', 'human') not in ('human', 'compact'):
+                raise ValueError('Format respons rekap tidak dikenal.')
             if any(k in request for k in ("expected_snapshot_id","expected_snapshot_sha256")):
                 if query_text:
                     raise ValueError("Verifikasi write memerlukan action=all, bukan filter.")
@@ -354,5 +365,10 @@ class LogisticsStorageReader(Component):
                                            "storage": {"source": source_info, "source_count": source_count, "filter": query_text}})
             except (ValueError, OSError) as exc:
                 return Message(text=f"GAGAL: data terbaca tetapi referensi read-back tidak dapat dibuat ({exc}).")
-        summary = format_shelter_summary(records, source_info or "Penyimpanan Lokal", source_count=source_count, query=query_text, reference=reference, verification=verification)
+        calculation = None
+        if request.get('include_calculation') is True and reference and (verification or {}).get('status') != 'mismatch':
+            from sigap_needs import calculate
+            calculation = calculate(json.loads(json.dumps(records)))
+            calculation.update(reference)
+        summary = format_shelter_summary(records, source_info or "Penyimpanan Lokal", source_count=source_count, query=query_text, reference=reference, verification=verification, calculation=calculation, response_format=request.get('response_format', 'human'))
         return Message(text=summary)

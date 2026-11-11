@@ -4,7 +4,7 @@
       "type": "streamable-http",
       "url": "http://localhost:7860/api/v1/mcp/project/209f7bc8-7ef5-4403-ab01-8cfa5a40e624/streamable",
       "headers": {
-        "x-api-key": "sk-7_jaS73buIKKqU8e63AHtHWt1wJ_AFugwVYui1mMMgc"
+        "x-api-key": "GANTI_DENGAN_LANGFLOW_API_KEY"
       },
       "alwaysAllow": [
         "sigap_5_upsert_shelter",

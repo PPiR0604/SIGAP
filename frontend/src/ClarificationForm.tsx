@@ -1,3 +1,5 @@
+import {ActionButton} from './ui/ActionButton';
+import {PillTab,PillTabList} from '@/components/base/tabs/pill-tab';
 import { useEffect, useRef, useState } from 'react';
 import { MessageSquare } from 'lucide-react';
 import type { Shelter,RequirementKey } from './demo';
@@ -39,7 +41,8 @@ export function clarificationApplied(shelter:Shelter, changes:ClarificationChang
   });
 }
 
-export function ClarificationForm({ shelter, busy, connected, feedback, onSubmit,draftKey='local',focusField,focusRevision=0,layout='inline' }: {
+export function ClarificationForm({ shelter, busy, connected, feedback, onSubmit,draftKey='local',focusField,focusRevision=0,layout='inline',offline=false }: {
+  offline?:boolean;
   draftKey?:string;focusField?:string;focusRevision?:number;layout?:'inline'|'page';
   shelter: Shelter;
   busy: boolean;
@@ -116,6 +119,8 @@ export function ClarificationForm({ shelter, busy, connected, feedback, onSubmit
     if(Object.keys(extra).length)changes.push('Perbarui data tambahan yang dikonfirmasi petugas.');
     if (!changes.length) { setError('Ubah setidaknya satu data atau tulis catatan klarifikasi.'); return; }
     setError('');setErrorField('');
+    if(offline&&(!draft.name.trim()||!draft.village.trim())){setSection('data');setError('Isi nama posko dan desa agar laporan dapat dikenali.');return;}
+    if(offline&&note.trim())expected.note=note.trim();
     const structured=Object.keys(expected).length>0;
     if(structured&&note.trim())expected.note=note.trim();
     await onSubmit({...shelter,calculationKey:baseKey||shelter.calculationKey}, changes.join('.\n') + '.', expected,structured);
@@ -123,21 +128,21 @@ export function ClarificationForm({ shelter, busy, connected, feedback, onSubmit
 
   return <section className="inline-clarification" aria-label="Klarifikasi posko">
     {feedback && <p role={feedback.kind === 'error' ? 'alert' : 'status'} className={feedback.kind === 'error' ? 'form-error' : 'clarification-feedback'}>{feedback.text}</p>}
-    {!editing ? <button className="button secondary" disabled={busy || !connected} onClick={() => { setError(''); setEditing(true); }}><MessageSquare size={16} aria-hidden="true"/>Tulis klarifikasi</button> :
+    {!editing ? <ActionButton className="button secondary" disabled={busy || (!connected&&!offline)} onClick={() => { setError(''); setEditing(true); }}><MessageSquare size={16} aria-hidden="true"/>Tulis klarifikasi</ActionButton> :
       <form onSubmit={submit} noValidate aria-label="Form klarifikasi" aria-busy={busy}>
         <div className="field-label-row"><h3>Perbarui data posko</h3><HelpTip label="Panduan klarifikasi"><p id="clarification-help">Isi atau ubah data yang sudah dikonfirmasi. Kolom kosong tidak menghapus nilai lama. Setelah validasi, tinjau dan setujui untuk menyimpan.</p></HelpTip></div>
-        {error && <p className="form-error" role="alert" tabIndex={-1} ref={errorBox}>{error}{errorField&&<button type="button" className="button quiet" onClick={()=>{setSection('data');requestAnimationFrame(()=>document.getElementById('clarification-'+errorField)?.focus());}}>Perbaiki kolom</button>}</p>}
-        {layout==='page'&&<div className="clarification-section-tabs" role="group" aria-label="Bagian formulir klarifikasi">{([['data','Data posko'],['stock','Kebutuhan & stok'],['notes','Catatan']] as const).map(([key,label])=><button type="button" key={key} aria-pressed={section===key} onClick={()=>setSection(key)}>{label}</button>)}</div>}
-        <fieldset disabled={busy||!connected} aria-describedby="clarification-help">
+        {error && <p className="form-error" role="alert" tabIndex={-1} ref={errorBox}>{error}{errorField&&<ActionButton type="button" className="button quiet" onClick={()=>{setSection('data');requestAnimationFrame(()=>document.getElementById('clarification-'+errorField)?.focus());}}>Perbaiki kolom</ActionButton>}</p>}
+        {layout==='page'&&<PillTabList className="sigap-pill-tabs" aria-label="Bagian formulir klarifikasi">{([['data','Data posko'],['stock','Kebutuhan & stok'],['notes','Catatan']] as const).map(([key,label])=><PillTab variant="gray" key={key} isSelected={section===key} onSelect={()=>setSection(key)}>{label}</PillTab>)}</PillTabList>}
+        <fieldset disabled={busy||(!connected&&!offline)} aria-describedby="clarification-help">
           <legend className="sr-only">Identitas, angka, kebutuhan dan catatan klarifikasi</legend>
           <div hidden={layout==='page'&&section!=='data'}><div className="clarification-section"><h4>Identitas posko</h4><div className="clarification-grid">{(['name','village'] as const).map(key=><div className="clarification-field" key={key}><div className="field-label-row"><label className="field-label" htmlFor={`clarification-${key}`}>{key==='name'?'Nama posko':'Desa'}</label><FieldSource shelter={shelter} field={reviewField[key]||key}/></div><input id={`clarification-${key}`} value={draft[key]} maxLength={200} placeholder={key==='village'?'Belum diketahui':undefined} aria-describedby={hintId(key)} onChange={e=>setDraft(d=>({...d,[key]:e.target.value}))}/>{fieldHint(key)}{errorField===key&&<small id={`clarification-${key}-error`} className="field-error">{error}</small>}</div>)}</div></div>
           <div className="clarification-section"><h4>Data pengungsi</h4><div className="clarification-grid">{fields.map(([key, label], index) => <div className="clarification-field" key={key}><div className="field-label-row"><label className="field-label" htmlFor={`clarification-${key}`}>{label}</label><FieldSource shelter={shelter} field={reviewField[key]||key}/></div><input id={`clarification-${key}`} ref={index === 0 ? firstInput : undefined} type="number" aria-invalid={errorField===key} min="0" step="1" inputMode="numeric" value={draft[key]} placeholder="Belum diketahui" aria-describedby={hintId(key)} onChange={event => setDraft(current => ({ ...current, [key]: event.target.value }))}/>{fieldHint(key)}{errorField===key&&<small id={`clarification-${key}-error`} className="field-error">{error}</small>}</div>)}</div></div>
           </div><div hidden={layout==='page'&&section!=='stock'}><div className="clarification-section"><h4>Kebutuhan</h4><div className="field-label clarification-note"><div className="field-label-row"><label htmlFor="clarification-needs">Kebutuhan yang dilaporkan</label><HelpTip label="Panduan kebutuhan yang dilaporkan"><p id="clarification-needs-help">Satu kebutuhan per baris. Daftar ini mengganti kebutuhan posko ini saja. Untuk mengosongkan daftar, gunakan Usulkan pengosongan data.</p></HelpTip></div><textarea id="clarification-needs" rows={3} maxLength={4000} value={draft.needs} onChange={e=>setDraft(d=>({...d,needs:e.target.value}))} aria-describedby={['clarification-needs-help',hintId('needs')].filter(Boolean).join(' ')}/>{fieldHint('needs')}</div></div>
           </div><StockEditor shelter={shelter} extra={extra} onChange={setExtra} onError={setExtraError} section={layout==='page'?section:undefined} focusField={focusField} focusRevision={focusRevision}/><div hidden={layout==='page'&&section!=='notes'}>
           <label className="field-label clarification-note">Catatan klarifikasi (opsional)<textarea id="clarification-note" rows={3} value={note} onChange={event => setNote(event.target.value)} placeholder="Misalnya: kebutuhan air sudah terpenuhi, atau jelaskan data yang perlu dikosongkan."/></label>
-          </div><div className="clarification-actions">{layout==='page'&&<span>Validasi belum menyimpan data.</span>}<button type="button" className="button secondary" onClick={() => { setEditing(false); setError(''); }}>Batal</button><button type="submit" className="button primary">{busy ? 'Memvalidasi…' : 'Validasi perubahan'}</button></div>
+          </div><div className="clarification-actions">{layout==='page'&&<span>{offline?'Draf perangkat · belum dikirim atau disetujui.':'Validasi belum menyimpan data.'}</span>}<ActionButton type="button" className="button secondary" onClick={() => { setEditing(false); setError(''); }}>Batal</ActionButton><ActionButton type="submit" className="button primary">{busy ? (offline?'Menyimpan…':'Memvalidasi…') : offline?'Simpan draf di perangkat':'Validasi perubahan'}</ActionButton></div>
         </fieldset>
       </form>}
-    {!connected && <p className="muted">Hubungkan backend untuk memvalidasi perubahan. Data contoh tidak dapat diubah menjadi rekap nyata.</p>}
+    {offline?<p className="muted">Validasi AI dan penyimpanan ke rekap dilakukan setelah tersambung, masuk, dan persetujuan petugas.</p>:!connected && <p className="muted">Hubungkan backend untuk memvalidasi perubahan. Data contoh tidak dapat diubah menjadi rekap nyata.</p>}
   </section>;
 }

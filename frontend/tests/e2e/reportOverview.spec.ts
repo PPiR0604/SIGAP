@@ -8,7 +8,7 @@ async function workspace(page:Page,records:unknown[]=[a,b,c]){
  let id=0;const events:{id:number;body:string}[]=[];
  const emit=(type:string,data:unknown)=>{const next=++id;events.push({id:next,body:`id: ${next}\nevent: ${type}\ndata: ${JSON.stringify(data)}\n\n`});};
  await page.route('**/api/sessions/*/events',r=>r.fulfill({contentType:'text/event-stream',body:events.filter(e=>e.id>Number(r.request().headers()['last-event-id']||0)).map(e=>e.body).join('')||': keepalive\n\n'}));
- emit('stored_rekap_ready',{records});await page.goto('/?view=Laporan');await expect(page.getByRole('button',{name:'Backend Mock',exact:true})).toBeVisible();
+ emit('stored_rekap_ready',{records});await page.goto('/?view=Laporan');await expect(page.getByRole('heading',{name:'Laporan & Percakapan',exact:true})).toBeVisible();
  if((page.viewportSize()?.width??1440)<=760)await page.getByRole('button',{name:/Hasil pemeriksaan/}).click();
  return emit;
 }

@@ -9,8 +9,10 @@ TOOLS = ('fetch_shelters', 'prepare_needs', 'validate_needs', 'calculate_gap',
          'flag_anomalies', 'upsert_shelter', 'draft_bulletin')
 
 
-def backend_url(value, local=False):
+def backend_url(value, local=False, internal_docker=False):
     parsed = urlsplit(value)
+    if local and internal_docker and value == 'http://backend:8787':
+        return value
     is_local = parsed.hostname in ('localhost', '127.0.0.1', '::1', 'host.docker.internal')
     if (not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment
             or parsed.path not in ('', '/') or parsed.scheme != 'https' and not (local and is_local and parsed.scheme == 'http')):
@@ -65,7 +67,7 @@ class Settings:
                 raise ValueError('Allowed browser origins must be exact HTTPS origins.')
         return cls(api_key=api_key, superuser=superuser,
                    password=password, secret_key=secret_key,
-                   backend=backend_url(env.get('SIGAP_BACKEND_INTERNAL_URL', ''), env.get('SIGAP_MCP_ALLOW_LOCAL_BACKEND') == '1' and env.get('RENDER') != 'true' and not vercel),
+                   backend=backend_url(env.get('SIGAP_BACKEND_INTERNAL_URL', ''), env.get('SIGAP_MCP_ALLOW_LOCAL_BACKEND') == '1' and env.get('RENDER') != 'true' and not vercel, env.get('SIGAP_DEPLOYMENT_MODE') == 'local'),
                    port=port, internal_port=internal,
                    timeout=timeout,
                    data_dir=Path(env.get('SIGAP_MCP_DATA_DIR', str(Path(tempfile.gettempdir()) / 'sigap-mcp'))),

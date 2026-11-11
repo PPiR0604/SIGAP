@@ -1,3 +1,4 @@
+import {ActionButton} from './ui/ActionButton';
 import {ArrowRight} from 'lucide-react';
 import {HelpTip} from './HelpTip';
 import type {Shelter,RequirementKey} from './demo';
@@ -21,6 +22,6 @@ export function NeedsHistogram({shelters,onView,onCalculate,busy=false,canCalcul
    </div>;
   })}</div>
   {sameCoverage&&incomplete&&<small className="histogram-missing">{shelters.length-totals[0].calculated} posko belum dihitung</small>}
-  <div className="histogram-actions"><div className="histogram-legend-hint"><small>Skala per satuan</small><HelpTip label="Arti diagram kebutuhan"><p>Total seluruh posko dari hasil hitung server, bukan kekurangan setelah stok. Semua jenis ditampilkan sekaligus.</p><p>Setiap batang memiliki skala dan satuan sendiri. Panjang batang antarjenis tidak dibandingkan karena liter, kkal, unit, dan m² berbeda.</p><p>Hasil yang belum dihitung tidak dianggap nol. Pilih angka kebutuhan untuk membuka rincian.</p></HelpTip></div>{incomplete&&onCalculate&&<button type="button" className="button quiet" disabled={busy||!canCalculate} onClick={onCalculate}>{busy?'Menghitung…':'Hitung kebutuhan'}</button>}</div>
+  <div className="histogram-actions"><div className="histogram-legend-hint"><small>Skala per satuan</small><HelpTip label="Arti diagram kebutuhan"><p>Total seluruh posko dari hasil hitung server, bukan kekurangan setelah stok. Semua jenis ditampilkan sekaligus.</p><p>Setiap batang memiliki skala dan satuan sendiri. Panjang batang antarjenis tidak dibandingkan karena liter, kkal, unit, dan m² berbeda.</p><p>Hasil yang belum dihitung tidak dianggap nol. Pilih angka kebutuhan untuk membuka rincian.</p></HelpTip></div>{incomplete&&onCalculate&&<ActionButton type="button" className="button quiet" disabled={busy||!canCalculate} onClick={onCalculate}>{busy?'Menghitung…':'Hitung kebutuhan'}</ActionButton>}</div>
  </div>;
 }

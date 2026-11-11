@@ -1,6 +1,17 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {validateMcpUrl} from '../src/mcp/urlPolicy.js';
+
+test('docker MCP hostname is accepted only in explicit local mode',()=>{
+ const previous=process.env.SIGAP_DEPLOYMENT_MODE;
+ try{
+  delete process.env.SIGAP_DEPLOYMENT_MODE;
+  assert.throws(()=>validateMcpUrl('http://langflow:10000/mcp'));
+  process.env.SIGAP_DEPLOYMENT_MODE='local';
+  assert.equal(validateMcpUrl('http://langflow:10000/mcp').hostname,'langflow');
+  assert.throws(()=>validateMcpUrl('http://other:10000/mcp'));
+ }finally{if(previous===undefined)delete process.env.SIGAP_DEPLOYMENT_MODE;else process.env.SIGAP_DEPLOYMENT_MODE=previous;}
+});
 import {McpHttpClient} from '../src/mcp/httpClient.js';
 
 test('remote MCP requires an exact configured HTTPS origin',()=>{

@@ -39,7 +39,7 @@ export async function validateAndCreateApproval(
     body: DecisionRequestBody,
 ): Promise<DecisionValidationResult> {
     batch = (await repo.getBatch(batch.batch_id)) || batch;
-    // If action is back_to_review, just record status change
+    // Cancel pending approvals while preserving the authoritative current status.
     if (body.action === "back_to_review") {
         if (["saving", "verifying"].includes(batch.status))
             return {
@@ -47,8 +47,14 @@ export async function validateAndCreateApproval(
                 code: "WRITE_IN_PROGRESS",
                 message: "Penyimpanan sedang berlangsung.",
             };
+        if (batch.status !== "ready_for_review")
+            return {valid:false,code:"INVALID_BATCH_STATUS",message:"Kandidat ini perlu divalidasi ulang sebelum dapat diperiksa."};
         await repo.revokeApprovals(batch.batch_id);
-        await repo.updateBatchStatus(batch.batch_id, "ready_for_review");
+        // It is already in review. Do not overwrite a newer status if an
+        // approved write starts while pending approvals are being revoked.
+        const current = await repo.getBatch(batch.batch_id);
+        if (!current || current.status !== "ready_for_review")
+            return {valid:false,code:current&&["saving","verifying"].includes(current.status)?"WRITE_IN_PROGRESS":"INVALID_BATCH_STATUS",message:"Status kandidat berubah. Muat ulang hasil terbaru."};
         return { valid: true };
     }
 
@@ -323,8 +329,10 @@ export async function verifyToolExecutionAgainstGate(
             reason: `Ditolak: Persetujuan untuk snapshot ini berstatus ${approval.status}.`,
         };
     }
-    const snapshot = await repo.getSnapshot(snapshotId);
-    const batch = await repo.getBatch(batchId);
+    const [snapshot, batch] = await Promise.all([
+        repo.getSnapshot(snapshotId),
+        repo.getBatch(batchId),
+    ]);
     if (
         !snapshot ||
         snapshot.batch_id !== batchId ||

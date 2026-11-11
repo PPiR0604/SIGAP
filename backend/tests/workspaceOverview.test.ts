@@ -7,10 +7,10 @@ const id='1'.repeat(32),sha='a'.repeat(64);
 const records=[{batch_id:'old',report_id:'R001',shelter_name:'Posko A',village:'A',total_people:10},{batch_id:'old',report_id:'R002',shelter_name:'Posko B',village:'B',total_people:20}];
 const result=(rows:Array<(typeof records)[number]&{update_target?:{batch_id:string;report_id:string}}>=records,ref={snapshot_id:id,snapshot_sha256:sha})=>({...ref,shelters:rows.map(r=>({...r,needs:{air_liter_per_hari:{value:r.total_people*15},kkal_per_hari:{value:r.total_people*2100},jamban_unit:{value:Math.ceil(r.total_people/20)},ruang_hunian_m2:{value:r.total_people*3.5}},gaps:{},priority:'SEDANG'})),totals:{total_people:30}});
 const text=(value:unknown)=>({content:[{type:'text',text:JSON.stringify(value)}]});
-async function fixture(){
+async function fixture(inline?:'valid'|'stale'|'altered'){
  const calls:string[]=[];let fail=false,hold:Promise<void>|undefined;
  const runtime:AgentRuntime={isAvailable:async()=>true,initSession:async()=>{calls.push('init');return 'runtime';},closeSession:async()=>{},sendPrompt:async()=>assert.fail('Initial overview must never call a model'),
-  readStoredRekap:async()=>{calls.push('read');if(hold)await hold;return text({status:'ok',total_shelters:2,snapshot_id:id,snapshot_sha256:sha,records});},
+  readStoredRekap:async(_session,_signal,options)=>{calls.push('read');assert.equal(options?.includeCalculation,true);if(hold)await hold;const calculated=result();if(inline==='stale')calculated.snapshot_id='2'.repeat(32);if(inline==='altered')calculated.shelters[0].total_people=999;return text({status:'ok',total_shelters:2,snapshot_id:id,snapshot_sha256:sha,records,...(inline?{validated_calculation:calculated}:{})});},
   calculateNeedsForSnapshot:async(_session,ref)=>{calls.push('calculate');assert.deepEqual(Object.keys(ref).sort(),['snapshot_id','snapshot_sha256']);if(fail)throw new Error('synthetic failure');return text(result(ref.snapshot_id===id?records:[{...records[0],total_people:12,update_target:{batch_id:'old',report_id:'R001'}}],ref));}};
  const repo=new SigapRepository(':memory:');
  const config={host:'127.0.0.1',port:0,allowedOrigins:[],bobCommand:'unused',bobArgs:'',bobWorkspace:'output/test',langflowUrl:'http://127.0.0.1:1',snapshotDir:'output/test',maxInputBytes:204800,retentionDays:7,approvalTtlSeconds:3600,dbPath:':memory:',sessionToken:'overview-test'};
@@ -26,6 +26,65 @@ test('first workspace fetch reads and calculates all records without a chat turn
   assert.equal(response.headers['cache-control'],'no-store');
   assert.equal((await f.app.inject({method:'GET',url:f.url})).statusCode,401);
   assert.equal((await f.app.inject({method:'GET',url:'/api/sessions/missing/overview',headers:f.headers})).statusCode,404);
+ }finally{await f.app.close();f.repo.close();}
+});
+
+test('session preparation overlaps recovery and is reused by overview without premature reads',async()=>{
+ const f=await fixture();let release!:()=>void;
+ const barrier=new Promise<void>(resolve=>{release=resolve;});
+ f.runtime.initSession=async()=>{f.calls.push('init');await barrier;return 'runtime';};
+ try{
+  f.orchestrator.warmSession(f.session.session_id,f.session.context_id);
+  f.orchestrator.warmSession(f.session.session_id,f.session.context_id);
+  await new Promise<void>(resolve=>setImmediate(resolve));
+  assert.deepEqual(f.calls,['init']);assert.equal(f.orchestrator.isProcessing(f.session.session_id),false);
+  const overview=f.app.inject({url:f.url,headers:f.headers});
+  await new Promise<void>(resolve=>setImmediate(resolve));
+  assert.deepEqual(f.calls,['init']);release();
+  assert.equal((await overview).json().status,'ready');
+  assert.deepEqual(f.calls,['init','read','calculate']);
+  assert.equal(f.repo.countBatches(f.session.session_id),0);assert.deepEqual(f.repo.getEventsAfter(f.session.session_id),[]);
+ }finally{release();await f.app.close();f.repo.close();}
+});
+
+test('background session preparation is bounded and skipped sessions initialize normally later',async()=>{
+ const f=await fixture();let release!:()=>void;
+ const barrier=new Promise<void>(resolve=>{release=resolve;});
+ f.runtime.initSession=async()=>{f.calls.push('init');await barrier;return 'runtime';};
+ try{
+  f.orchestrator.warmSession('background-a','overview');f.orchestrator.warmSession('background-b','overview');
+  f.orchestrator.warmSession(f.session.session_id,'overview');
+  await new Promise<void>(resolve=>setImmediate(resolve));assert.equal(f.calls.length,2);
+  release();assert.equal((await f.app.inject({url:f.url,headers:f.headers})).json().status,'ready');
+  assert.equal(f.calls.filter(call=>call==='init').length,3);
+ }finally{release();await f.app.close();f.repo.close();}
+});
+
+test('failed background initialization can be retried by a real overview',async()=>{
+ const f=await fixture();let attempts=0;
+ f.runtime.initSession=async()=>{if(++attempts===1)throw new Error('synthetic setup failure');return 'runtime';};
+ try{
+  f.orchestrator.warmSession(f.session.session_id,f.session.context_id);
+  await new Promise<void>(resolve=>setImmediate(resolve));
+  assert.equal((await f.app.inject({url:f.url,headers:f.headers})).json().status,'ready');
+  assert.equal(attempts,2);
+ }finally{await f.app.close();f.repo.close();}
+});
+
+test('workspace reuses calculation returned by the fresh reader without another calculator call',async()=>{
+ const f=await fixture('valid');try{
+  const response=await f.app.inject({url:f.url,headers:f.headers});
+  const data=response.json();assert.equal(data.status,'ready');assert.equal(data.records.length,2);
+  assert.equal(data.calculation.totals.air_liter_per_hari,450);assert.deepEqual(f.calls,['init','read']);
+  assert.equal(f.repo.countBatches(f.session.session_id),0);
+ }finally{await f.app.close();f.repo.close();}
+});
+
+for(const mode of ['stale','altered'] as const)test(`workspace rejects ${mode} reader calculation while retaining current records`,async()=>{
+ const f=await fixture(mode);try{
+  const response=await f.app.inject({url:f.url,headers:f.headers});const data=response.json();
+  assert.equal(data.status,'partial');assert.equal(data.records.length,2);assert.equal(data.calculation,null);
+  assert.deepEqual(f.calls,['init','read']);
  }finally{await f.app.close();f.repo.close();}
 });
 test('overview preserves a pending correction alongside other shelters without approving or replacing its source',async()=>{
@@ -96,6 +155,22 @@ test('expired recovery handoff is not reused',async t=>{
   await f.orchestrator.recoverWorkspaceState(f.session.session_id);
   const later=Date.now()+30001;t.mock.method(Date,'now',()=>later);
   assert.equal((await f.app.inject({url:f.url,headers:f.headers})).json().status,'ready');assert.equal(reads,2);
+ }finally{await f.app.close();f.repo.close();}
+});
+
+test('foreground work invalidates an external recovery read before its response arrives',async()=>{
+ const f=await fixture();try{
+  let reads=0;const original=f.repo.getWorkspaceState.bind(f.repo);
+  f.repo.getWorkspaceState=id=>{reads++;return original(id);};
+  let release!:(value:any)=>void;
+  const pending=f.orchestrator.recoverWorkspaceState(f.session.session_id,()=>new Promise(resolve=>{release=resolve;}));
+  await Promise.resolve();
+  const batch=f.repo.createBatch({sessionId:f.session.session_id,requestId:'during-recovery',contextId:'overview',sourceSha256:sha,sourceLength:4,filteredText:'halo',piiSummary:{}});
+  f.runtime.sendPrompt=async()=>{};
+  await f.orchestrator.processBatchMessage({sessionId:f.session.session_id,batchId:batch.batch_id,requestId:'during-recovery',contextId:'overview',filteredText:'halo'});
+  release({reviews:[],activeBatch:null});await pending;
+  assert.equal((await f.app.inject({url:f.url,headers:f.headers})).json().status,'ready');
+  assert.equal(reads,1,'Overview must read current state after foreground work invalidated the pending handoff');
  }finally{await f.app.close();f.repo.close();}
 });
 

@@ -1,3 +1,5 @@
+import {StatusBadge} from './ui/StatusBadge';
+import {ActionButton} from './ui/ActionButton';
 import { Copy, FileText, Printer, CheckCircle2, ShieldCheck, Heart, AlertCircle, Clock, MapPin, Database } from 'lucide-react';
 import type { Shelter } from './demo';
 
@@ -40,9 +42,9 @@ export function SnapshotMetadataCard({
           <Database size={15} className="snapshot-icon" aria-hidden="true" />
           Sumber rekap
         </h3>
-        <span className={storageVerified ? 'snapshot-badge-verified' : 'snapshot-badge-draft'}>
+        <StatusBadge className={storageVerified ? 'snapshot-badge-verified' : 'snapshot-badge-draft'}>
           {!snapshotId?'Referensi belum tersedia':storageVerified ? 'Tersimpan' : 'Kandidat pemeriksaan'}
-        </span>
+        </StatusBadge>
       </div>
 
       <dl className="snapshot-meta-grid">
@@ -96,13 +98,13 @@ export function BulletinActionsCard({
       <h3 className="bulletin-actions-title">{sourceChanged?'Perbarui draf':hasDraft?'Gunakan draf':'Susun buletin'}</h3>
       <p>{processing||dispatching?'Sedang memproses. Draf sebelumnya tetap tersedia untuk dibaca.':sourceChanged?'Susun ulang agar draf memakai data terbaru.':hasDraft?'Salin atau cetak sebagai draf. Publikasi memerlukan persetujuan admin.':'Ringkas rekap menjadi draf untuk diperiksa.'}</p>
       <div className="bulletin-actions-stack">
-        {hasDraft&&<button type="button" className={`button ${sourceChanged?'secondary':'primary'} bulletin-action-btn`} disabled={processing||dispatching} onClick={onCopy}>
+        {hasDraft&&<ActionButton type="button" className={`button ${sourceChanged?'secondary':'primary'} bulletin-action-btn`} disabled={processing||dispatching} onClick={onCopy}>
           <Copy size={16} aria-hidden="true" />
           Salin draf
-        </button>}
+        </ActionButton>}
 
         {(hasDraft||!composeInHeader)&&(
-          <button
+          <ActionButton
             type="button"
             className={`button ${!hasDraft||sourceChanged?'primary':'secondary'} bulletin-action-btn`}
             disabled={!canRequest || processing || dispatching}
@@ -110,10 +112,10 @@ export function BulletinActionsCard({
           >
             <FileText size={16} aria-hidden="true" />
             {hasDraft?'Susun ulang draf':'Susun draf'}
-          </button>
+          </ActionButton>
         )}
 
-        <button
+        <ActionButton
           type="button"
           className="button quiet bulletin-action-btn"
           disabled={!hasDraft||processing||dispatching}
@@ -121,7 +123,7 @@ export function BulletinActionsCard({
         >
           <Printer size={16} aria-hidden="true" />
           Cetak draf
-        </button>
+        </ActionButton>
       </div>
       {!canRequest&&<p className="note">Hubungkan backend dari halaman Laporan untuk menyusun draf.</p>}
     </div>

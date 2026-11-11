@@ -147,12 +147,15 @@ describe('SIGAP Backend API Integration Tests', () => {
       headers: { authorization: `Bearer ${token}` },
       payload: {
         request_id: 'req-msg-1',
-        text: 'different text'
+        text: 'Posko Harapan: 98 jiwa. Kontak Bpk Rudi (NIK 3211012345670001, HP 081234567890). Butuh beras dan air.'
       }
     });
     assert.equal(idempotentRes.statusCode, 200);
     const idemBody = JSON.parse(idempotentRes.payload);
     assert.equal(idemBody.batch_id, body.batch_id);
+    const mismatch=await app.inject({method:'POST',url:`/api/sessions/${sessionId}/messages`,headers:{authorization:`Bearer ${token}`},payload:{request_id:'req-msg-1',text:'Isi laporan berubah'}});
+    assert.equal(mismatch.statusCode,409);
+    assert.equal(mismatch.json().error.code,'REQUEST_CONTENT_CONFLICT');
   });
 
   test('GET /api/batches/:id mengambil status dan data kanonis untuk pemulihan', async () => {

@@ -1,3 +1,5 @@
+import {StatusBadge} from './ui/StatusBadge';
+import {ActionButton} from './ui/ActionButton';
 import {useEffect,useRef,useState} from 'react';
 import {Copy,Printer,ShieldCheck,ArrowUpRight} from 'lucide-react';
 import {BrandLogo} from './BrandLogo';
@@ -23,11 +25,11 @@ export function PublicBulletin(){
  useEffect(()=>{if(!loading)heading.current?.focus({preventScroll:true});},[loading]);
  async function copy(){try{await navigator.clipboard.writeText(location.href);setCopied(true);}catch{setError('Salin tautan dari bilah alamat browser Anda.');}}
  return <div className="public-bulletin-page"><a className="skip-link" href="#public-main">Langsung ke buletin</a>
-  <header className="public-site-header"><a className="public-brand" href="/" aria-label="SIGAP beranda"><BrandLogo/><strong>SIGAP<span>Publikasi kebutuhan posko</span></strong></a><span className="badge success"><ShieldCheck size={15} aria-hidden="true"/>Akses publik</span></header>
+  <header className="public-site-header"><a className="public-brand" href="/" aria-label="SIGAP beranda"><BrandLogo/><strong>SIGAP<span>Publikasi kebutuhan posko</span></strong></a><StatusBadge className="badge success"><ShieldCheck size={15} aria-hidden="true"/>Akses publik</StatusBadge></header>
   <main id="public-main" className="public-main">
-   <div className="public-page-heading"><div><p className="location">BULETIN LOGISTIK</p><h1 ref={heading} tabIndex={-1}>{data?.context_name||'Publikasi SIGAP'}</h1><p>{data?'Versi publikasi yang disetujui admin.':'Baca buletin tanpa masuk atau membuat akun.'}</p></div>{data&&<div className="public-page-actions"><button className="button secondary" onClick={()=>void copy()}><Copy size={16} aria-hidden="true"/>{copied?'Tautan disalin':'Salin tautan'}</button><button className="button secondary" onClick={()=>window.print()}><Printer size={16} aria-hidden="true"/>Cetak</button></div>}</div>
+   <div className="public-page-heading"><div><p className="location">BULETIN LOGISTIK</p><h1 ref={heading} tabIndex={-1}>{data?.context_name||'Publikasi SIGAP'}</h1><p>{data?'Versi publikasi yang disetujui admin.':'Baca buletin tanpa masuk atau membuat akun.'}</p></div>{data&&<div className="public-page-actions"><ActionButton className="button secondary" onClick={()=>void copy()}><Copy size={16} aria-hidden="true"/>{copied?'Tautan disalin':'Salin tautan'}</ActionButton><ActionButton className="button secondary" onClick={()=>window.print()}><Printer size={16} aria-hidden="true"/>Cetak</ActionButton></div>}</div>
    {loading&&<section className="card" role="status">Memuat publikasi…</section>}
-   {error&&<section className="card public-error" role="alert"><h2>{data?'Tautan publikasi':'Publikasi belum tersedia'}</h2><p>{error}</p>{!data&&token&&<button className="button secondary" onClick={()=>setReload(n=>n+1)}>Coba lagi</button>}</section>}
+   {error&&<section className="card public-error" role="alert"><h2>{data?'Tautan publikasi':'Publikasi belum tersedia'}</h2><p>{error}</p>{!data&&token&&<ActionButton className="button secondary" onClick={()=>setReload(n=>n+1)}>Coba lagi</ActionButton>}</section>}
    {data&&<PublicBulletinContent data={data}/>}
    <footer className="public-footer"><span>Data mengikuti versi saat diterbitkan.</span><a href="/">Ruang kerja petugas <ArrowUpRight size={14} aria-hidden="true"/></a></footer>
   </main>

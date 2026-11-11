@@ -1,6 +1,7 @@
 import type {FastifyPluginAsync} from 'fastify';
 import type {Repository} from '../db/contract.js';
 import {DocumentError,OCR_LIMITS,extractDocument} from '../documents/ocr.js';
+import {requestSession} from '../auth/requestSession.js';
 
 export type DocumentExtractor=typeof extractDocument;
 export function createDocumentsRoute(repo:Repository,extractor:DocumentExtractor=extractDocument):FastifyPluginAsync{return async app=>{
@@ -10,7 +11,7 @@ export function createDocumentsRoute(repo:Repository,extractor:DocumentExtractor
  app.post('/api/sessions/:id/documents/extract',{bodyLimit:OCR_LIMITS.bytes},async(req,reply)=>{
   reply.header('Cache-Control','no-store');
   const sessionId=(req.params as {id:string}).id;
-  if(!await repo.getSession(sessionId))return reply.code(404).send({error:{code:'SESSION_NOT_FOUND',message:'Sesi tidak ditemukan. Buka sesi yang aktif lalu coba lagi.'}});
+  if(!await requestSession(req,repo,sessionId))return reply.code(404).send({error:{code:'SESSION_NOT_FOUND',message:'Sesi tidak ditemukan. Buka sesi yang aktif lalu coba lagi.'}});
   if(!Buffer.isBuffer(req.body))return reply.code(415).send({error:{code:'INVALID_DOCUMENT_BODY',message:'Unggah dokumen sebagai berkas biner.'}});
   let filename:string;
   try{const header=req.headers['x-document-name'];if(typeof header!=='string')throw new Error();filename=decodeURIComponent(header);}catch{return reply.code(422).send({error:{code:'INVALID_DOCUMENT_NAME',message:'Nama dokumen tidak valid.'}});}

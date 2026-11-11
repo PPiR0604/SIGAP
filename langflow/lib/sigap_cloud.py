@@ -1,5 +1,6 @@
 """Scoped Supabase transport. Capabilities arrive from the authenticated backend, never the LLM."""
 import contextvars
+import copy
 import functools
 import hashlib
 import json
@@ -12,6 +13,7 @@ import urllib.request
 from pathlib import Path
 
 _cloud_capability = contextvars.ContextVar('sigap_cloud_capability', default=None)
+_cloud_snapshot_reads = contextvars.ContextVar('sigap_cloud_snapshot_reads', default=None)
 
 def cloud_request(action, args=None):
     cap = _cloud_capability.get()
@@ -50,9 +52,14 @@ def authenticated_component(method):
             if text == raw:
                 setattr(self, field, envelope['input'])
         token = _cloud_capability.set(cap)
+        # Only immutable source reads inside one read/validation invocation are
+        # reusable. Operational storage, authorization, and writer reads stay live.
+        reads_token = _cloud_snapshot_reads.set({} if type(self).__name__ in (
+            'PoskoReportPreprocessor', 'ShelterReportValidator') else None)
         try:
             return method(self, *args, **kwargs)
         finally:
+            _cloud_snapshot_reads.reset(reads_token)
             _cloud_capability.reset(token)
     return guarded
 
@@ -67,8 +74,17 @@ def cloud_scope():
 
 def cloud_save_snapshot(payload):
     identifier = secrets.token_hex(16)
-    digest = snapshot_digest(payload)
-    cloud_request('flow.save', {'id': identifier, 'envelope': {'created_at': time.time(), 'sha256': digest, 'payload': payload}})
+    envelope = {'created_at': time.time(), 'payload': copy.deepcopy(payload)}
+    digest = envelope['sha256'] = snapshot_digest(envelope['payload'])
+    if cloud_request('flow.save', {'id': identifier, 'envelope': envelope}) is not True:
+        raise ValueError('Snapshot save was not confirmed.')
+    # A source just accepted by the server need not be fetched back during
+    # this same validation invocation. Scope, hash and expiry checks on reads
+    # still apply. Writers have no invocation cache and continue reading live.
+    reads = _cloud_snapshot_reads.get()
+    if reads is not None:
+        reads[(_cloud_capability.get(), identifier, digest)] = {
+            'envelope': copy.deepcopy(envelope), 'committed_reference': None}
     return {'snapshot_id': identifier, 'snapshot_sha256': digest}
 
 def cloud_load_snapshot(request):
@@ -76,7 +92,9 @@ def cloud_load_snapshot(request):
         raise ValueError('Use a server-issued snapshot reference.')
     if any(k in request for k in ('records', 'stock', 'stock_context', 'snapshot_records')):
         raise ValueError('Free records cannot replace a snapshot.')
-    result = cloud_request('flow.load', {'id': request['snapshot_id']})
+    reads = _cloud_snapshot_reads.get()
+    cache_key = (_cloud_capability.get(), request['snapshot_id'], request.get('snapshot_sha256'))
+    result = copy.deepcopy(reads[cache_key]) if reads is not None and cache_key in reads else cloud_request('flow.load', {'id': request['snapshot_id']})
     if not result or result.get('committed_reference'):
         raise ValueError('Snapshot is missing, outside scope or superseded. Read back current data.')
     envelope = result['envelope']
@@ -84,6 +102,8 @@ def cloud_load_snapshot(request):
         raise ValueError('Snapshot expired.')
     if snapshot_digest(envelope['payload']) != envelope['sha256'] or request.get('snapshot_sha256') != envelope['sha256']:
         raise ValueError('Snapshot hash mismatch.')
+    if reads is not None:
+        reads[cache_key] = copy.deepcopy(result)
     return envelope['payload']
 
 def cloud_commit_snapshot(original, effective, storage):

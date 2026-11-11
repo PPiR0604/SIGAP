@@ -25,6 +25,9 @@ test('HITL memblokir penyimpanan sampai semua persetujuan dan keputusan field le
   expect(decisions).toHaveLength(0);
   await app.getByRole('button', { name: 'Tinjau & setujui' }).click();
   const dialog = app.getByRole('dialog', { name: 'Tinjau persetujuan' });
+  const centered=await dialog.evaluate(el=>{const r=el.getBoundingClientRect();return {x:Math.abs(r.left+r.width/2-innerWidth/2),y:Math.abs(r.top+r.height/2-innerHeight/2)};});
+  expect(centered.x).toBeLessThanOrEqual(1);
+  expect(centered.y).toBeLessThanOrEqual(1);
   const confirm = dialog.getByRole('button', { name: 'Konfirmasi persetujuan' });
   await confirm.click();
   await expect(dialog.getByRole('alert')).toHaveText('Berikan persetujuan eksplisit atas pratinjau ini.');

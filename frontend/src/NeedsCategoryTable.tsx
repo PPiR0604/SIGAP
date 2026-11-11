@@ -1,4 +1,5 @@
-import {ArrowRight} from 'lucide-react';
+import {ActionButton} from './ui/ActionButton';
+import {RiArrowRightLine} from '@remixicon/react';
 import type {Shelter} from './demo';
 import {categoryCounts,metricSummary,shelterReportsCategory,type NeedCategoryKey} from './chartData';
 import {metrics} from './needs';
@@ -28,10 +29,10 @@ export function NeedsCategoryTable({shelters,selectedCategory,onSelectCategory,o
         <th scope="row">{c.label}</th>
         <td className="category-summary-count" aria-label={`${c.count} dari ${shelters.length} posko`}>{shelters.length?`${c.count} dari ${shelters.length}`:'—'}</td>
         <td className="category-estimate">{!c.count?<span className="category-summary-empty">—</span>:!estimate.label?<span className="category-summary-empty">Perlu rincian barang</span>:estimate.required===null?<span className="category-summary-empty">Belum dihitung</span>:<><strong>{estimate.required.toLocaleString('id-ID',{maximumFractionDigits:1})} {estimate.unit}</strong><small>{estimate.label}{estimate.calculated<estimate.total?` · ${estimate.calculated} dari ${estimate.total} posko dihitung`:''}</small></>}</td>
-        <td>{c.count>0?<button type="button" className="category-summary-action" aria-label={`Lihat ${c.count} posko yang melaporkan ${c.label}`} aria-pressed={selectedCategory===c.key} onClick={()=>onSelectCategory(c.key)}>Lihat posko<ArrowRight size={15} aria-hidden="true"/></button>:<span className="category-summary-empty">{shelters.length?'Belum dilaporkan':'Belum ada data'}</span>}</td>
+        <td>{c.count>0?<ActionButton type="button" variant="ghost" trailingIcon={RiArrowRightLine} className="category-summary-action" aria-label={`Lihat ${c.count} posko yang melaporkan ${c.label}`} aria-pressed={selectedCategory===c.key} onClick={()=>onSelectCategory(c.key)}>Lihat posko</ActionButton>:<span className="category-summary-empty">{shelters.length?'Belum dilaporkan':'Belum ada data'}</span>}</td>
       </tr>;})}</tbody>
     </table></div>
-    {onCalculate&&shelters.some(s=>!s.requirements)&&<button className="button secondary" disabled={busy} onClick={onCalculate}>{busy?'Menghitung…':'Hitung kebutuhan'}</button>}
+    {onCalculate&&shelters.some(s=>!s.requirements)&&<ActionButton className="button secondary" disabled={busy} onClick={onCalculate}>{busy?'Menghitung…':'Hitung kebutuhan'}</ActionButton>}
     <p className="note">{shelters.length?'Acuan hasil hitung menjumlahkan posko yang melaporkan kategori tersebut; bukan permintaan bantuan yang sudah dikonfirmasi. Satu posko dapat melaporkan beberapa kebutuhan.':'Belum ada posko dalam rekap. Baca rekap tersimpan atau kirim laporan untuk memulai.'}</p>
   </section>;
 }

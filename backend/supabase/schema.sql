@@ -16,6 +16,7 @@ create table public.sigap_contexts(organization_id uuid references public.sigap_
 create table public.sigap_entities(seq bigint generated always as identity primary key,kind text not null,id text not null,
  document jsonb not null,unique(kind,id));
 create index sigap_entities_filter on public.sigap_entities using gin(document jsonb_path_ops);
+create index sigap_events_session_cursor on public.sigap_entities ((document->>'session_id'),((document->>'event_id')::bigint) desc) where kind='events';
 create unique index sigap_one_approval on public.sigap_entities((document->>'batch_id'),(document->>'snapshot_id'))
  where kind='approvals' and document->>'status' in ('pending','consumed','expired');
 create unique index sigap_request_id on public.sigap_entities((document->>'request_id')) where kind='batches';
@@ -266,6 +267,50 @@ begin
  elsif p_action='session.valid' then
   return to_jsonb(exists(select 1 from auth.sessions where id::text=p_args->>'session_id' and user_id=(p_args->>'user_id')::uuid
    and (not_after is null or not_after>now())) and not exists(select 1 from sigap_private.revoked_sessions where session_id=p_args->>'session_id'));
+ elsif p_action='review.prepare' then
+  -- sigap:review-preparation-v1: create snapshot and batch preview atomically.
+  declare
+   review jsonb := p_args->'snapshot'; review_batch jsonb; existing_review jsonb; payload jsonb;
+  begin
+   if jsonb_typeof(p_args->'session_id') is distinct from 'string' or length(p_args->>'session_id')=0
+      or jsonb_typeof(review) is distinct from 'object'
+      or coalesce(review->>'snapshot_id','') !~ '^[a-f0-9]{32}$'
+      or coalesce(review->>'snapshot_sha256','') !~ '^[a-f0-9]{64}$'
+      or jsonb_typeof(review->'batch_id') is distinct from 'string' or length(review->>'batch_id')=0
+      or jsonb_typeof(review->'payload_json') is distinct from 'string'
+      or jsonb_typeof(review->'quality_status') is distinct from 'string'
+      or jsonb_typeof(review->'created_at') is distinct from 'string'
+      or jsonb_typeof(review->'expires_at') is distinct from 'string'
+      or review->'superseded_by' is distinct from 'null'::jsonb
+      then raise exception 'REVIEW_INPUT_INVALID'; end if;
+   payload := (review->>'payload_json')::jsonb;
+   if jsonb_typeof(payload) is distinct from 'object'
+      or payload->>'snapshot_id' is distinct from review->>'snapshot_id'
+      or payload->>'snapshot_sha256' is distinct from review->>'snapshot_sha256'
+      or (review->>'expires_at')::timestamptz<=now()
+      or (review->>'created_at')::timestamptz>=(review->>'expires_at')::timestamptz
+      then raise exception 'REVIEW_INPUT_INVALID'; end if;
+   select document into review_batch from public.sigap_entities
+    where kind='batches' and id=review->>'batch_id' for update;
+   if not found or review_batch->>'session_id' is distinct from p_args->>'session_id'
+      or coalesce(review_batch->>'status','') not in ('processing','ready_for_review')
+      then raise exception 'REVIEW_BATCH_NOT_EDITABLE'; end if;
+   select document into existing_review from public.sigap_entities
+    where kind='snapshots' and id=review->>'snapshot_id';
+   if found then
+    -- Existing payloads are never overwritten. Backend verifies immutable fields
+    -- and exact normalized payload before any replay status/payload update.
+    return jsonb_build_object('created',false,'snapshot',existing_review);
+   end if;
+   review := review || jsonb_build_object('version',case when review_batch->>'latest_snapshot_id' is null then 1 else 2 end);
+   insert into public.sigap_entities(kind,id,document) values('snapshots',review->>'snapshot_id',review);
+   update public.sigap_entities set document=document||jsonb_build_object(
+    'status','ready_for_review','latest_snapshot_id',review->>'snapshot_id',
+    'latest_snapshot_sha256',review->>'snapshot_sha256','quality_status',review->>'quality_status',
+    'preview_payload_json',review->>'payload_json','updated_at',review->>'created_at')
+    where kind='batches' and id=review->>'batch_id';
+   return jsonb_build_object('created',true,'snapshot',review);
+  end;
  elsif p_action='entity.get' then
   return (select document from public.sigap_entities where kind=p_args->>'kind' and id=p_args->>'id');
  elsif p_action='approval.consume' then
@@ -277,6 +322,67 @@ begin
   if not exists(select 1 from public.sigap_memberships where user_id::text=a->>'actor_id' and status='active' and role in ('admin','petugas')) then return 'false'; end if;
   update public.sigap_entities set document=document||jsonb_build_object('status','consumed','consumed_at',now()) where kind='approvals' and id=p_args->>'id';return 'true';
  elsif p_action='entity.list' then
+  -- sigap:workspace-state-v1: return only current review rows and active work.
+  if p_args->>'kind'='batches' and p_args->'workspace_state'='true'::jsonb then
+   if jsonb_typeof(p_args->'filter'->'session_id') is distinct from 'string'
+      or length(p_args->'filter'->>'session_id')=0
+      or p_args->'filter' is distinct from jsonb_build_object('session_id',p_args->'filter'->>'session_id')
+      then raise exception 'WORKSPACE_SESSION_REQUIRED'; end if;
+   if jsonb_typeof(p_args->'workspace_cutoff') is distinct from 'string'
+      or (p_args->>'workspace_cutoff') !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$'
+      or (p_args ? 'active_only' and jsonb_typeof(p_args->'active_only') is distinct from 'boolean')
+      then raise exception 'WORKSPACE_OPTIONS_INVALID'; end if;
+   perform (p_args->>'workspace_cutoff')::timestamptz;
+   return jsonb_build_object(
+    'reviews',case when p_args->'active_only'='true'::jsonb then '[]'::jsonb else
+     (select coalesce(jsonb_agg(jsonb_build_object('snapshot',snapshot.document,'batch',batch.document)
+       order by batch.seq desc,snapshot.seq desc),'[]'::jsonb)
+      from public.sigap_entities batch join public.sigap_entities snapshot
+       on snapshot.kind='snapshots' and snapshot.document @> jsonb_build_object('batch_id',batch.id,'superseded_by',null)
+      where batch.kind='batches' and batch.document @> ((p_args->'filter')||'{"status":"ready_for_review"}'::jsonb)
+       and (snapshot.document->>'expires_at') collate "C" > (p_args->>'workspace_cutoff') collate "C") end,
+    'activeBatch',(select document from public.sigap_entities where kind='batches' and document @> (p_args->'filter')
+      and document->>'status' in ('processing','saving','verifying') order by seq desc limit 1));
+  end if;
+  -- sigap:submission-state-v1: one bounded response for message preflight.
+  if p_args->>'kind'='batches' and p_args->'submission_state'='true'::jsonb then
+   if jsonb_typeof(p_args->'filter'->'session_id') is distinct from 'string'
+      or length(p_args->'filter'->>'session_id')=0
+      or p_args->'filter' is distinct from jsonb_build_object('session_id',p_args->'filter'->>'session_id')
+      then raise exception 'SUBMISSION_SESSION_REQUIRED'; end if;
+   if jsonb_typeof(p_args->'request_id') is distinct from 'string'
+      or left(p_args->>'request_id',length(p_args->'filter'->>'session_id')+1)<>(p_args->'filter'->>'session_id')||':'
+      or length(p_args->>'request_id')<=length(p_args->'filter'->>'session_id')+1
+      then raise exception 'SUBMISSION_REQUEST_INVALID'; end if;
+   return jsonb_build_object(
+    'existingBatch',(select document from public.sigap_entities where kind='batches'
+      and document->>'request_id'=p_args->>'request_id'
+      and document->>'session_id'=p_args->'filter'->>'session_id' limit 1),
+    'activeBatchId',(select document->'batch_id' from public.sigap_entities where kind='batches'
+      and document->>'session_id'=p_args->'filter'->>'session_id'
+      and document->>'status' in ('processing','saving','verifying') limit 1),
+    'firstTurn',not exists(select 1 from public.sigap_entities where kind='batches' and document @> (p_args->'filter')));
+  end if;
+  -- sigap:event-history-cursor-v1: bound queries to one exact session.
+  if p_args->>'kind'='events' and
+     (p_args->'latest_event_id'='true'::jsonb or p_args ? 'after_event_id') then
+   if jsonb_typeof(p_args->'filter'->'session_id') is distinct from 'string'
+      or length(p_args->'filter'->>'session_id')=0 then raise exception 'EVENT_SESSION_REQUIRED'; end if;
+   if p_args->'latest_event_id'='true'::jsonb then
+    return coalesce((select document->'event_id' from public.sigap_entities
+     where kind='events' and document->>'session_id'=p_args->'filter'->>'session_id'
+      and document @> (p_args->'filter')
+     order by (document->>'event_id')::bigint desc limit 1),'0'::jsonb);
+   end if;
+   if jsonb_typeof(p_args->'after_event_id') is distinct from 'number'
+      or (p_args->>'after_event_id')::numeric<0
+      or (p_args->>'after_event_id')::numeric>9007199254740991
+      or trunc((p_args->>'after_event_id')::numeric)<>(p_args->>'after_event_id')::numeric
+      then raise exception 'EVENT_CURSOR_INVALID'; end if;
+   return (select coalesce(jsonb_agg(document order by (document->>'event_id')::bigint),'[]') from public.sigap_entities
+    where kind='events' and document->>'session_id'=p_args->'filter'->>'session_id'
+     and document @> (p_args->'filter') and (document->>'event_id')::bigint>(p_args->>'after_event_id')::bigint);
+  end if;
   return (select coalesce(jsonb_agg(document order by seq),'[]') from public.sigap_entities where kind=p_args->>'kind' and document @> coalesce(p_args->'filter','{}'));
  elsif p_action='entity.put' then
   insert into public.sigap_entities(kind,id,document) values(p_args->>'kind',p_args->>'id',p_args->'document') returning seq into n;
@@ -330,6 +436,40 @@ begin
   insert into public.sigap_entities(kind,id,document) values('audit_log',gen_random_uuid()::text,jsonb_build_object('event_type','PUBLICATION_APPROVED','actor_id',actor,'organization_id',org,'resource_id',r->>'id','created_at',now()));
   return r;
  elsif p_action='storage.read' then
+  -- sigap:workspace-recovery-v1: cursor, drafts and storage share one SQL snapshot.
+  if p_args ? 'recovery_session_id' then
+   if jsonb_typeof(p_args->'recovery_session_id') is distinct from 'string'
+      or length(p_args->>'recovery_session_id')=0
+      or jsonb_typeof(p_args->'workspace_cutoff') is distinct from 'string'
+      or (p_args->>'workspace_cutoff') !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$'
+      then raise exception 'RECOVERY_OPTIONS_INVALID'; end if;
+   perform (p_args->>'workspace_cutoff')::timestamptz;
+   select jsonb_build_object(
+    'revision',coalesce(storage.revision,0),
+    'document',coalesce(storage.document,'{"header":[],"rows":[]}'::jsonb),
+    'recovery',jsonb_build_object('session_id',workspace.id,
+     'after_event_id',coalesce((select event.document->'event_id' from public.sigap_entities event
+       where event.kind='events' and event.document->>'session_id'=workspace.id
+       order by (event.document->>'event_id')::bigint desc limit 1),'0'::jsonb),
+     'state',jsonb_build_object(
+      'reviews',(select coalesce(jsonb_agg(jsonb_build_object('snapshot',snapshot.document,'batch',batch.document)
+        order by batch.seq desc,snapshot.seq desc),'[]'::jsonb)
+       from public.sigap_entities batch join public.sigap_entities snapshot
+        on snapshot.kind='snapshots' and snapshot.document @> jsonb_build_object('batch_id',batch.id,'superseded_by',null)
+       where batch.kind='batches' and batch.document @> jsonb_build_object('session_id',workspace.id,'status','ready_for_review')
+        and (snapshot.document->>'expires_at') collate "C" > (p_args->>'workspace_cutoff') collate "C"),
+      'activeBatch',(select document from public.sigap_entities where kind='batches'
+        and document @> jsonb_build_object('session_id',workspace.id)
+        and document->>'status' in ('processing','saving','verifying') order by seq desc limit 1))))
+    into r from public.sigap_entities workspace left join public.sigap_storage storage
+     on storage.organization_id=org and storage.context_id=ctx
+    where workspace.kind='sessions' and workspace.id=p_args->>'recovery_session_id'
+     and workspace.document @> jsonb_build_object('session_id',workspace.id,'organization_id',org::text,'context_id',ctx)
+     and (m.role='admin' or workspace.document->>'owner_user_id'=actor::text);
+   if r is null then raise exception 'RECOVERY_SESSION_DENIED' using errcode='42501'; end if;
+   return r;
+  end if;
+
   select * into s from public.sigap_storage where organization_id=org and context_id=ctx;
   return jsonb_build_object('revision',coalesce(s.revision,0),'document',coalesce(s.document,'{"header":[],"rows":[]}'));
  elsif p_action='storage.receipt' then

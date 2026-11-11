@@ -1,0 +1,238 @@
+name: sigap-local
+services:
+  db:
+    image: supabase/postgres:17.6.1.136
+    environment:
+      POSTGRES_HOST: /var/run/postgresql
+      POSTGRES_PORT: '5432'
+      PGPORT: '5432'
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD: ${LOCAL_POSTGRES_PASSWORD:?Run local setup first}
+      PGPASSWORD: ${LOCAL_POSTGRES_PASSWORD:?Run local setup first}
+      JWT_EXP: '3600'
+    volumes:
+      - sigap-local-db:/var/lib/postgresql/data
+      - sigap-local-db-config:/etc/postgresql-custom
+      - ./deployment/local/supabase/db/webhooks.sql:/docker-entrypoint-initdb.d/init-scripts/98-webhooks.sql:ro
+      - ./deployment/local/supabase/db/roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql:ro
+      - ./deployment/local/supabase/db/jwt.sql:/docker-entrypoint-initdb.d/init-scripts/99-jwt.sql:ro
+      - ./deployment/local/supabase/db/_supabase.sql:/docker-entrypoint-initdb.d/migrations/97-_supabase.sql:ro
+      - ./deployment/local/supabase/db/realtime.sql:/docker-entrypoint-initdb.d/migrations/99-realtime.sql:ro
+      - ./deployment/local/supabase/db/logs.sql:/docker-entrypoint-initdb.d/migrations/99-logs.sql:ro
+      - ./deployment/local/supabase/db/pooler.sql:/docker-entrypoint-initdb.d/migrations/99-pooler.sql:ro
+    command: [postgres, -c, config_file=/etc/postgresql/postgresql.conf, -c, log_min_messages=fatal]
+    healthcheck:
+      test: [CMD, pg_isready, -U, postgres, -h, localhost]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+  auth:
+    image: supabase/gotrue:v2.197.0
+    depends_on:
+      db: {condition: service_healthy}
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: '9999'
+      API_EXTERNAL_URL: http://localhost:54321
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${LOCAL_POSTGRES_PASSWORD}@db:5432/postgres
+      GOTRUE_SITE_URL: http://localhost:8080
+      GOTRUE_URI_ALLOW_LIST: http://localhost:8080/**,http://127.0.0.1:8080/**
+      GOTRUE_DISABLE_SIGNUP: 'false'
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_EXP: '3600'
+      GOTRUE_JWT_SECRET: ${LOCAL_JWT_SECRET:?Run local setup first}
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: 'true'
+      GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED: 'false'
+      GOTRUE_MAILER_AUTOCONFIRM: 'false'
+      GOTRUE_SMTP_ADMIN_EMAIL: admin@sigap.local
+      GOTRUE_SMTP_HOST: mailpit
+      GOTRUE_SMTP_PORT: '1025'
+      GOTRUE_SMTP_SENDER_NAME: SIGAP Lokal
+      GOTRUE_MAILER_URLPATHS_INVITE: /auth/v1/verify
+      GOTRUE_MAILER_URLPATHS_CONFIRMATION: /auth/v1/verify
+      GOTRUE_MAILER_URLPATHS_RECOVERY: /auth/v1/verify
+      GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE: /auth/v1/verify
+    healthcheck:
+      test: [CMD, wget, --no-verbose, --tries=1, --spider, 'http://localhost:9999/health']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+  rest:
+    image: postgrest/postgrest:v14.18
+    depends_on:
+      db: {condition: service_healthy}
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${LOCAL_POSTGRES_PASSWORD}@db:5432/postgres
+      PGRST_DB_SCHEMAS: public,graphql_public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${LOCAL_JWT_SECRET:?Run local setup first}
+      PGRST_DB_USE_LEGACY_GUCS: 'false'
+      PGRST_ADMIN_SERVER_PORT: '3001'
+      PGRST_ADMIN_SERVER_HOST: localhost
+    healthcheck:
+      test: [CMD, postgrest, --ready]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+  functions:
+    image: supabase/edge-runtime:v1.77.9
+    environment:
+      SUPABASE_URL: http://api-gw:8000
+      SUPABASE_SERVICE_ROLE_KEY: ${LOCAL_SERVICE_ROLE_KEY:?Run local setup first}
+    volumes:
+      - ./backend/supabase/gateway.ts:/home/deno/functions/sigap-backend/index.ts:ro
+    command: [start, --main-service, /home/deno/functions/sigap-backend]
+    restart: unless-stopped
+  api-gw:
+    image: nginx:1.27.5-alpine
+    depends_on:
+      auth: {condition: service_healthy}
+      rest: {condition: service_healthy}
+      functions: {condition: service_started}
+    ports: ['127.0.0.1:54321:8000']
+    volumes:
+      - ./deployment/local/gateway.conf:/etc/nginx/conf.d/default.conf:ro
+    healthcheck:
+      test: [CMD, wget, --no-verbose, --tries=1, --spider, 'http://127.0.0.1:8000/health']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+  mailpit:
+    image: axllent/mailpit:v1.32.0
+    ports: ['127.0.0.1:8025:8025']
+    restart: unless-stopped
+  schema:
+    image: supabase/postgres:17.6.1.136
+    depends_on:
+      db: {condition: service_healthy}
+      auth: {condition: service_healthy}
+    environment:
+      PGHOST: db
+      PGPORT: '5432'
+      PGDATABASE: postgres
+      PGUSER: postgres
+      PGPASSWORD: ${LOCAL_POSTGRES_PASSWORD:?Run local setup first}
+      SIGAP_SUPABASE_GATEWAY_SECRET: ${SIGAP_SUPABASE_GATEWAY_SECRET:?Run local setup first}
+    volumes:
+      - ./deployment/local:/sigap/local:ro
+      - ./backend/supabase/migrations:/sigap/migrations:ro
+    entrypoint: [/bin/bash, /sigap/local/schema.sh]
+    restart: 'no'
+  seed:
+    image: sigap-local/backend:local
+    build: {context: ./backend, dockerfile: Dockerfile}
+    depends_on:
+      schema: {condition: service_completed_successfully}
+      api-gw: {condition: service_healthy}
+    environment:
+      LOCAL_SERVICE_ROLE_KEY: ${LOCAL_SERVICE_ROLE_KEY:?Run local setup first}
+      SIGAP_ORGANIZATION_ID: ${SIGAP_ORGANIZATION_ID:?Run local setup first}
+      LOCAL_ADMIN_PASSWORD: ${LOCAL_ADMIN_PASSWORD:?Run local setup first}
+      LOCAL_OFFICER_PASSWORD: ${LOCAL_OFFICER_PASSWORD:?Run local setup first}
+      LOCAL_VIEWER_PASSWORD: ${LOCAL_VIEWER_PASSWORD:?Run local setup first}
+    volumes:
+      - ./deployment/local/seed.mjs:/sigap/seed.mjs:ro
+      - ./deployment/local/seed-storage.json:/sigap/seed-storage.json:ro
+    entrypoint: [node, /sigap/seed.mjs]
+    restart: 'no'
+  backend:
+    image: sigap-local/backend:local
+    build: {context: ./backend, dockerfile: Dockerfile}
+    depends_on:
+      seed: {condition: service_completed_successfully}
+    environment:
+      NODE_ENV: production
+      SIGAP_DOCKER: '1'
+      SIGAP_DEPLOYMENT_MODE: local
+      SIGAP_HOST: 0.0.0.0
+      SIGAP_PORT: '8787'
+      SIGAP_AGENT_PROVIDER: ${SIGAP_AGENT_PROVIDER:-watsonx}
+      SIGAP_OPENAI_BASE_URL: ${SIGAP_OPENAI_BASE_URL:-http://host.docker.internal:20128/v1}
+      SIGAP_OPENAI_MODEL: ${SIGAP_OPENAI_MODEL:-ag/gemini-3.8-flash-high}
+      SIGAP_OPENAI_API_KEY: ${SIGAP_OPENAI_API_KEY:-}
+      SIGAP_WATSONX_URL: ${SIGAP_WATSONX_URL:?Run local setup first}
+      SIGAP_WATSONX_PROJECT_ID: ${SIGAP_WATSONX_PROJECT_ID:?Run local setup first}
+      SIGAP_WATSONX_API_KEY: ${SIGAP_WATSONX_API_KEY:?Run local setup first}
+      SIGAP_WATSONX_MODEL: ${SIGAP_WATSONX_MODEL:-ibm/granite-4-h-small}
+      SIGAP_SUPABASE_URL: http://api-gw:8000
+      SIGAP_SUPABASE_PUBLISHABLE_KEY: ${LOCAL_ANON_KEY:?Run local setup first}
+      SIGAP_SUPABASE_GATEWAY_SECRET: ${SIGAP_SUPABASE_GATEWAY_SECRET:?Run local setup first}
+      SIGAP_ORGANIZATION_ID: ${SIGAP_ORGANIZATION_ID:?Run local setup first}
+      SIGAP_AUTH_REDIRECT_URL: http://localhost:8080/
+      SIGAP_ALLOWED_ORIGINS: http://localhost:8080,http://127.0.0.1:8080
+      LANGFLOW_MCP_URL: http://langflow:10000/mcp
+      LANGFLOW_API_KEY: ${LANGFLOW_API_KEY:?Run local setup first}
+    volumes:
+      - sigap-local-backend:/app/state
+      - ./mcp:/app/mcp:ro
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:8787/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+    restart: unless-stopped
+  langflow-init:
+    image: sigap-local/langflow:local
+    build: {context: ./langflow, dockerfile: Dockerfile}
+    user: '0:0'
+    volumes:
+      - sigap-local-langflow:/app/state
+    entrypoint: [sh, -c, 'chown 1000:1000 /app/state']
+    restart: 'no'
+  langflow:
+    image: sigap-local/langflow:local
+    build: {context: ./langflow, dockerfile: Dockerfile}
+    depends_on:
+      backend: {condition: service_healthy}
+      langflow-init: {condition: service_completed_successfully}
+    environment:
+      SIGAP_DEPLOYMENT_MODE: local
+      SIGAP_MCP_ALLOW_LOCAL_BACKEND: '1'
+      SIGAP_BACKEND_INTERNAL_URL: http://backend:8787
+      LANGFLOW_API_KEY: ${LANGFLOW_API_KEY:?Run local setup first}
+      LANGFLOW_SECRET_KEY: ${LANGFLOW_SECRET_KEY:?Run local setup first}
+      LANGFLOW_SUPERUSER_PASSWORD: ${LANGFLOW_SUPERUSER_PASSWORD:?Run local setup first}
+      SIGAP_MCP_DATA_DIR: /app/state
+    volumes:
+      - sigap-local-langflow:/app/state
+    ports: ['127.0.0.1:10000:10000']
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:10000/health',timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 75
+      start_period: 60s
+    restart: unless-stopped
+  frontend:
+    build: {context: ./frontend, dockerfile: Dockerfile}
+    depends_on:
+      backend: {condition: service_healthy}
+      langflow: {condition: service_healthy}
+    ports: ['127.0.0.1:8080:80']
+    restart: unless-stopped
+  verify:
+    profiles: [tools]
+    image: sigap-local/backend:local
+    build: {context: ./backend, dockerfile: Dockerfile}
+    environment:
+      LOCAL_ANON_KEY: ${LOCAL_ANON_KEY:?Run local setup first}
+      LOCAL_ADMIN_PASSWORD: ${LOCAL_ADMIN_PASSWORD:?Run local setup first}
+      LOCAL_OFFICER_PASSWORD: ${LOCAL_OFFICER_PASSWORD:?Run local setup first}
+      LOCAL_VIEWER_PASSWORD: ${LOCAL_VIEWER_PASSWORD:?Run local setup first}
+      SIGAP_SUPABASE_GATEWAY_SECRET: ${SIGAP_SUPABASE_GATEWAY_SECRET:?Run local setup first}
+      LANGFLOW_API_KEY: ${LANGFLOW_API_KEY:?Run local setup first}
+    volumes:
+      - ./deployment/local/verify.mjs:/sigap/verify.mjs:ro
+    entrypoint: [node, /sigap/verify.mjs]
+volumes:
+  sigap-local-db:
+  sigap-local-db-config:
+  sigap-local-backend:
+  sigap-local-langflow:

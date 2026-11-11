@@ -5,6 +5,41 @@ const options={sessionId:'one',batchId:'batch',requestId:'request',prompt:'Lapor
 const settings={apiKey:'synthetic-test-key',model:'gemini-3.8-flash'};
 const allow=async()=>({allow:true});
 
+test('model-selected analysis is gated, returns the canonical result once, and never dispatches an invented MCP tool',async()=>{
+  const mcp=await scenarioMcp();
+  const turn=call('analyze_shelter_needs',{view:'water_ranking',scope:'stored'});
+  turn.parts.unshift({text:'Posko yang salah paling butuh air.'});
+  const script=scriptedModel([turn,done]);const runtime=new GeminiAgentRuntime(settings,script.model);
+  const events:any[]=[];let executions=0,gates=0;
+  try{
+    await runtime.initSession({sessionId:'one',contextId:'test',mcpServerConfig:[{name:'langflow',type:'http',url:mcp.url,headers:[]}]});
+    await runtime.sendPrompt({...options,filteredText:'Bagaimana sebaiknya kita mendahulukan pasokan air?',analyzeNeeds:async request=>{
+      assert.deepEqual(request,{view:'water_ranking',scope:'stored'});executions++;return 'Posko Cibening: 1.000 L/hari.';
+    }},e=>events.push(e),async(_sid,tool)=>{assert.equal(tool.toolName,'analyze_shelter_needs');gates++;return {allow:true};});
+    assert.equal(executions,1);assert.equal(gates,1);
+    assert.equal(script.inputs.length,1);
+    assert.ok(script.inputs[0].tools.some(tool=>tool.name==='analyze_shelter_needs'));
+    assert.deepEqual(events.filter(e=>e.event_type==='assistant_message').map(e=>e.payload.text),['Posko Cibening: 1.000 L/hari.']);
+    assert.equal(mcp.requests.filter(r=>r.method==='tools/call').length,0);
+  }finally{await runtime.shutdown();await mcp.close();}
+});
+
+test('invalid, denied and commit analysis requests never execute the read callback',async()=>{
+  for(const mode of ['invalid','denied','commit'] as const){
+    const mcp=await scenarioMcp();let executions=0;
+    const script=scriptedModel([call('analyze_shelter_needs',{view:mode==='invalid'?'delete':'water_ranking',scope:'stored'}),done]);
+    const runtime=new GeminiAgentRuntime(settings,script.model);
+    try{
+      await runtime.initSession({sessionId:'one',contextId:'test',mcpServerConfig:[{name:'langflow',type:'http',url:mcp.url,headers:[]}]});
+      if(mode==='commit'){
+        await assert.rejects(runtime.sendPrompt({...options,operation:'commit',analyzeNeeds:async()=>{executions++;return 'bad';}},()=>{},allow));
+      }else await runtime.sendPrompt({...options,analyzeNeeds:async()=>{executions++;return 'bad';}},()=>{},async()=>({allow:mode!=='denied'}));
+      assert.equal(executions,0);
+      assert.equal(mcp.requests.filter(r=>r.method==='tools/call').length,0);
+    }finally{await runtime.shutdown();await mcp.close();}
+  }
+});
+
 test('Gemini runs source preparation and validator without losing opaque content',async()=>{
   const mcp=await scenarioMcp();const script=scriptedModel([call('sigap_1_prepare_needs',{input_value:'Posko Uji 10 jiwa.'}),call('sigap_2_validate_needs',{input_value:'{"batch_id":"source","source_sha256":"hash","records":[]}'}),done]);
   const runtime=new GeminiAgentRuntime(settings,script.model);const events:any[]=[];
