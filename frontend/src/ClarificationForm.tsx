@@ -53,10 +53,19 @@ export function ClarificationForm({ shelter, busy, connected, feedback, onSubmit
   const [editing, setEditing] = useState(layout==='page');
   const [section,setSection]=useState<'data'|'stock'|'notes'>('data');
   const storageKey=`sigap:clarification:${draftKey}`;
-  const [draft, setDraft] = useState<Draft>(() => {try{return JSON.parse(sessionStorage.getItem(storageKey)||'null')?.draft||values(shelter);}catch{return values(shelter);}});
-  const [extra,setExtra]=useState<ClarificationChanges>(()=>{try{return JSON.parse(sessionStorage.getItem(storageKey)||'null')?.extra||{};}catch{return {};}});
-  const [baseKey,setBaseKey]=useState(()=>{try{return JSON.parse(sessionStorage.getItem(storageKey)||'null')?.baseKey||shelter.calculationKey;}catch{return shelter.calculationKey;}});
-  const [note, setNote] = useState(()=>{try{return JSON.parse(sessionStorage.getItem(storageKey)||'null')?.note||'';}catch{return '';}});
+  const sourceKey=JSON.stringify([shelter.sourceBatchId,shelter.sourceReportId||shelter.id,shelter.name,shelter.village,shelter.calculationKey,shelter.reportNotes]);
+  const savedDraft=()=>{try{
+    const saved=JSON.parse(sessionStorage.getItem(storageKey)||'null');
+    if(!saved||typeof saved!=='object')return null;
+    const edited=saved.dirty===true&&saved.sourceValues&&saved.sourceKey;
+    const current=saved.baseKey===shelter.calculationKey&&(!saved.sourceKey||saved.sourceKey===sourceKey);
+    return edited||current?saved:null;
+  }catch{return null;}};
+  const [draft, setDraft] = useState<Draft>(() => savedDraft()?.draft||values(shelter));
+  const [extra,setExtra]=useState<ClarificationChanges>(()=>savedDraft()?.extra||{});
+  const [baseKey,setBaseKey]=useState(()=>savedDraft()?.baseKey||shelter.calculationKey);
+  const [note, setNote] = useState(()=>savedDraft()?.note||'');
+  const [boundSource,setBoundSource]=useState(()=>{const saved=savedDraft();return {key:saved?.sourceKey||sourceKey,values:saved?.sourceValues||values(shelter)};});
   const [extraError,setExtraError]=useState('');
   const [error, setError] = useState('');
   const [errorField,setErrorField]=useState('');
@@ -73,24 +82,29 @@ export function ClarificationForm({ shelter, busy, connected, feedback, onSubmit
   }
   const sourceHintId = (key: keyof Draft) => (shelter.reviewItems || []).some(item => item.field === (reviewField[key] || key) || (item.field === 'male+female' && ['male','female','people'].includes(key))) ? `clarification-${key}-hint` : undefined;
   const hintId=(key:keyof Draft)=>[sourceHintId(key),errorField===key?'clarification-'+key+'-error':null].filter(Boolean).join(' ')||undefined;
-  // Calculation results replace the object too. Only a changed edit source may reset the form.
-  const draftSource=JSON.stringify([shelter.sourceBatchId,shelter.id,shelter.name,shelter.village,shelter.needs,fields.map(([key])=>shelter[key])]);
+  const dirty=JSON.stringify(draft)!==JSON.stringify(boundSource.values)||Object.keys(extra).length>0||!!note.trim();
+  // Refresh untouched controls after read-back; an actual unsent edit retains its old base for server validation.
   useEffect(() => {
-    // Preserve requested values if the returned candidate did not apply them.
-    if (feedback?.kind === 'error'||editing) return;
-    try{if(sessionStorage.getItem(storageKey))return;}catch{}
-    setDraft(values(shelter));setBaseKey(shelter.calculationKey); setNote(''); setError('');
-  }, [draftSource]);
+    if(boundSource.key===sourceKey)return;
+    if(dirty){if(!feedback)setError('Data posko sudah berubah. Draf Anda dipertahankan; batalkan draf untuk memakai data terbaru sebelum mengirim.');return;}
+    setDraft(values(shelter));setExtra({});setBaseKey(shelter.calculationKey);setBoundSource({key:sourceKey,values:values(shelter)});setNote('');setError('');
+  }, [sourceKey,boundSource.key,dirty,feedback]);
   useEffect(() => { if (editing&&layout!=='page') firstInput.current?.focus(); }, [editing,layout]);
-  useEffect(() => { if (feedback?.kind === 'success' && !busy) {setEditing(false);setDraft(values(shelter));setExtra({});setBaseKey(shelter.calculationKey);setNote('');} }, [feedback, busy]);
+  useEffect(() => { if (feedback?.kind === 'success' && !busy) {setEditing(false);setDraft(values(shelter));setExtra({});setBaseKey(shelter.calculationKey);setBoundSource({key:sourceKey,values:values(shelter)});setNote('');} }, [feedback, busy]);
   useEffect(() => { if (error) focusClarification(errorBox.current); }, [error]);
-  useEffect(()=>{if(editing)try{sessionStorage.setItem(storageKey,JSON.stringify({draft,extra,baseKey,note}));}catch{}},[draft,extra,baseKey,note,editing,storageKey]);
+  useEffect(()=>{if(editing&&boundSource.key===sourceKey)try{if(dirty)sessionStorage.setItem(storageKey,JSON.stringify({draft,extra,baseKey,note,sourceKey,sourceValues:boundSource.values,dirty:true}));else sessionStorage.removeItem(storageKey);}catch{}},[draft,extra,baseKey,note,editing,storageKey,sourceKey,boundSource.key,dirty]);
   useEffect(()=>{if(feedback?.kind==='success'&&!busy)try{sessionStorage.removeItem(storageKey);}catch{}},[feedback,busy,storageKey]);
   useEffect(()=>{if(!focusField)return;setEditing(true);setSection(['urgent_needs','stock','stock_context','air_liter_per_hari','kkal_per_hari','jamban_unit','ruang_hunian_m2'].includes(focusField)?'stock':focusField==='notes'?'notes':'data');const frame=requestAnimationFrame(()=>{
     const metric=['air_liter_per_hari','kkal_per_hari','jamban_unit','ruang_hunian_m2'].includes(focusField)?focusField:null;
     const target=metric?document.querySelector<HTMLElement>(`[data-stock-field="${metric}"]`):focusField==='stock'||focusField==='stock_context'?document.querySelector<HTMLElement>('[data-stock-field]'):document.getElementById('clarification-'+(focusField==='reported_at'?'reportedAt':focusField==='male+female'?'people':Object.keys(reviewField).find(k=>reviewField[k]===focusField)||focusField));
     focusClarification(target||document.getElementById('clarification-note'));
   });return()=>cancelAnimationFrame(frame);},[focusField,focusRevision]);
+
+  function cancelDraft(){
+    setEditing(false);setDraft(values(shelter));setExtra({});setBaseKey(shelter.calculationKey);
+    setBoundSource({key:sourceKey,values:values(shelter)});setNote('');setError('');setExtraError('');
+    try{sessionStorage.removeItem(storageKey);}catch{}
+  }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -137,9 +151,9 @@ export function ClarificationForm({ shelter, busy, connected, feedback, onSubmit
           <div hidden={layout==='page'&&section!=='data'}><div className="clarification-section"><h4>Identitas posko</h4><div className="clarification-grid">{(['name','village'] as const).map(key=><div className="clarification-field" key={key}><div className="field-label-row"><label className="field-label" htmlFor={`clarification-${key}`}>{key==='name'?'Nama posko':'Desa'}</label><FieldSource shelter={shelter} field={reviewField[key]||key}/></div><input id={`clarification-${key}`} value={draft[key]} maxLength={200} placeholder={key==='village'?'Belum diketahui':undefined} aria-describedby={hintId(key)} onChange={e=>setDraft(d=>({...d,[key]:e.target.value}))}/>{fieldHint(key)}{errorField===key&&<small id={`clarification-${key}-error`} className="field-error">{error}</small>}</div>)}</div></div>
           <div className="clarification-section"><h4>Data pengungsi</h4><div className="clarification-grid">{fields.map(([key, label], index) => <div className="clarification-field" key={key}><div className="field-label-row"><label className="field-label" htmlFor={`clarification-${key}`}>{label}</label><FieldSource shelter={shelter} field={reviewField[key]||key}/></div><input id={`clarification-${key}`} ref={index === 0 ? firstInput : undefined} type="number" aria-invalid={errorField===key} min="0" step="1" inputMode="numeric" value={draft[key]} placeholder="Belum diketahui" aria-describedby={hintId(key)} onChange={event => setDraft(current => ({ ...current, [key]: event.target.value }))}/>{fieldHint(key)}{errorField===key&&<small id={`clarification-${key}-error`} className="field-error">{error}</small>}</div>)}</div></div>
           </div><div hidden={layout==='page'&&section!=='stock'}><div className="clarification-section"><h4>Kebutuhan</h4><div className="field-label clarification-note"><div className="field-label-row"><label htmlFor="clarification-needs">Kebutuhan yang dilaporkan</label><HelpTip label="Panduan kebutuhan yang dilaporkan"><p id="clarification-needs-help">Satu kebutuhan per baris. Daftar ini mengganti kebutuhan posko ini saja. Untuk mengosongkan daftar, gunakan Usulkan pengosongan data.</p></HelpTip></div><textarea id="clarification-needs" rows={3} maxLength={4000} value={draft.needs} onChange={e=>setDraft(d=>({...d,needs:e.target.value}))} aria-describedby={['clarification-needs-help',hintId('needs')].filter(Boolean).join(' ')}/>{fieldHint('needs')}</div></div>
-          </div><StockEditor shelter={shelter} extra={extra} onChange={setExtra} onError={setExtraError} section={layout==='page'?section:undefined} focusField={focusField} focusRevision={focusRevision}/><div hidden={layout==='page'&&section!=='notes'}>
+          </div><StockEditor key={boundSource.key} shelter={shelter} extra={extra} onChange={setExtra} onError={setExtraError} section={layout==='page'?section:undefined} focusField={focusField} focusRevision={focusRevision}/><div hidden={layout==='page'&&section!=='notes'}>
           <label className="field-label clarification-note">Catatan klarifikasi (opsional)<textarea id="clarification-note" rows={3} value={note} onChange={event => setNote(event.target.value)} placeholder="Misalnya: kebutuhan air sudah terpenuhi, atau jelaskan data yang perlu dikosongkan."/></label>
-          </div><div className="clarification-actions">{layout==='page'&&<span>{offline?'Draf perangkat · belum dikirim atau disetujui.':'Validasi belum menyimpan data.'}</span>}<ActionButton type="button" className="button secondary" onClick={() => { setEditing(false); setError(''); }}>Batal</ActionButton><ActionButton type="submit" className="button primary">{busy ? (offline?'Menyimpan…':'Memvalidasi…') : offline?'Simpan draf di perangkat':'Validasi perubahan'}</ActionButton></div>
+          </div><div className="clarification-actions">{layout==='page'&&<span>{offline?'Draf perangkat · belum dikirim atau disetujui.':'Validasi belum menyimpan data.'}</span>}<ActionButton type="button" className="button secondary" onClick={cancelDraft}>Batal</ActionButton><ActionButton type="submit" className="button primary">{busy ? (offline?'Menyimpan…':'Memvalidasi…') : offline?'Simpan draf di perangkat':'Validasi perubahan'}</ActionButton></div>
         </fieldset>
       </form>}
     {offline?<p className="muted">Validasi AI dan penyimpanan ke rekap dilakukan setelah tersambung, masuk, dan persetujuan petugas.</p>:!connected && <p className="muted">Hubungkan backend untuk memvalidasi perubahan. Data contoh tidak dapat diubah menjadi rekap nyata.</p>}

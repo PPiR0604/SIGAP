@@ -17,6 +17,21 @@ def card(package, task):
 
 
 class ReportCardsTests(unittest.TestCase):
+    def test_update_keeps_explicit_earlier_stock_clock_in_the_same_report_day(self):
+        from shelter_report_validator import validate
+        source = preprocess(card('B', 'T02'))[0]
+        for stamp, valid in [('2026-11-10 08:00',True),('2026-11-10 08:01',False),('2026-11-09 08:00',False)]:
+            with self.subTest(stamp=stamp):
+                record = {'report_id':'R001','shelter_name':'Sejahtera','village':'Karangmulya','total_people':52,
+                          'stock':{'air_liter_per_hari':360},'stock_context':{'air_liter_per_hari':{'unit':'L','recorded_at':stamp,'horizon_hours':24}}}
+                result = validate(json.dumps({'records':[record]}), source)['records'][0]
+                self.assertEqual(result['reported_at'],'2026-11-10 08:20')
+                self.assertEqual(result['stock_context']['air_liter_per_hari'].get('recorded_at'),stamp if valid else None)
+        source = source.replace('hasil cek jam', 'hasil cek kemarin jam')
+        record['stock_context']['air_liter_per_hari']['recorded_at'] = '2026-11-10 08:00'
+        result = validate(json.dumps({'records':[record]}),source)['records'][0]
+        self.assertIsNone(result['stock_context']['air_liter_per_hari'].get('recorded_at'))
+
     def test_local_exports_embed_compilable_current_preprocessor_and_validator(self):
         sys.path.insert(0, str(ROOT / 'langflow/scripts'))
         from sync_storage_flows import embedded

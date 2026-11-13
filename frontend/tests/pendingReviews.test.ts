@@ -1,11 +1,24 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {storedRows} from '../src/backendPreview.ts';
-import {receiveReview,pendingRows,reviewForShelter,applyReviewCalculations,type PendingReview} from '../src/pendingReviews.ts';
+import {receiveReview,pendingRows,reviewForShelter,olderReview,applyReviewCalculations,type PendingReview} from '../src/pendingReviews.ts';
 
 const a={batch_id:'stored-a',report_id:'R002',shelter_name:'Posko Harapan',village:'A',total_people:98,male:43,female:55,elderly:12};
 const b={batch_id:'stored-b',report_id:'R001',shelter_name:'Posko Cibening',village:'B',total_people:100,male:55,female:45,elderly:7};
 const stored=storedRows([a,b]);
+
+test('an earlier unresolved report remains reviewable without replacing newer stored population',()=>{
+ const final={shelter_id:'kenanga',shelter_name:'Kenanga',village:'Mekarsari',report_id:'R001',batch_id:'confirmed',reported_at:'2026-11-10T08:35',total_people:48,male:23,female:25};
+ const base=storedRows([final]);
+ const old:PendingReview={batchId:'old-review',preview:{snapshot_id:'old-snapshot',records:[{...final,batch_id:'older',reported_at:'2026-11-10 08:30',total_people:46}]}};
+ const rows=pendingRows(base,[old]);
+ assert.equal(rows[0].people,48);
+ assert.equal(olderReview(old,base),true);
+ assert.equal(reviewForShelter([old],rows[0]),undefined);
+ assert.equal(old.preview.records![0].total_people,46,'source draft is retained for review');
+ const simultaneous={...old,preview:{...old.preview,records:[{...old.preview.records![0],reported_at:'2026-11-10 08:35'}]}};
+ assert.equal(pendingRows(base,[simultaneous])[0].people,46,'equal-time conflicts still require a decision');
+});
 const candidate=(record:typeof a,batchId:string,elderly:number,superseded_snapshot_ids:string[]=[]):PendingReview=>({batchId,preview:{snapshot_id:`snapshot-${batchId}`,superseded_snapshot_ids,records:[{...record,report_id:'R001',batch_id:`source-${batchId}`,elderly,update_target:{batch_id:record.batch_id,report_id:record.report_id}}]}});
 
 test('A then B then A retains both changes and replaces only the superseded signed snapshot',()=>{

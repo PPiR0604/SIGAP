@@ -2,6 +2,12 @@ import type { Shelter } from './demo';
 import {reviewIndicators} from './reviewIndicators';
 
 export type Preview = { records?: Record<string, any>[]; issues?: any[]; snapshot_id?: string; simulated?: boolean; superseded_snapshot_ids?:string[] };
+/** Keep the source report and batch together even when a table row retains its UI ID. */
+export function clarificationTarget(shelter:Shelter){
+  return shelter.sourceReportId&&shelter.sourceBatchId
+    ?{report_id:shelter.sourceReportId,batch_id:shelter.sourceBatchId}
+    :shelter.correctionTarget||{report_id:shelter.id,batch_id:shelter.sourceBatchId};
+}
 const stable = (value:any):any => Array.isArray(value)?value.map(stable):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(key=>[key,stable(value[key])])):value;
 function calculationKey(record:Record<string,any>):string {
   const keys=['total_people','total_families','male','female','elderly','disability','infants_toddlers','children','pregnant','breastfeeding','is_estimate','stock','stock_context','urgent_needs','unverified_numbers','validation_issues','reported_at'];
@@ -37,7 +43,7 @@ export function previewRows(preview: Preview): Shelter[] {
     const hasConflict = !!r.storage_conflicts?.length;
     const needsClarification = (r.validation_issues || []).some((issue:any) => typeof issue === 'string' || issue.field !== 'storage_conflicts') || r.pending_clear_fields?.length || r.stock_issues?.length || r.storage_issues?.length || r.unverified_numbers?.length || (r.total_people != null && r.male != null && r.female != null && r.male + r.female !== r.total_people);
     const source = Object.values(r.field_provenance || {}).map((p: any) => p.source_excerpt || p.evidence).filter((x: any) => typeof x === 'string');
-    return { reviewItems:reviewIndicators(r),pendingClearFields:r.pending_clear_fields||[],calculationKey:calculationKey(r), id: r.report_id || `record-${index}`,shelterId:r.shelter_id||undefined, sourceBatchId:r.batch_id,
+    return { reviewItems:reviewIndicators(r),pendingClearFields:r.pending_clear_fields||[],calculationKey:calculationKey(r), id: r.report_id || `record-${index}`,shelterId:r.shelter_id||undefined, sourceBatchId:r.batch_id,sourceReportId:r.report_id,
       correctionTarget:r.update_target?{batch_id:r.update_target.batch_id,report_id:r.update_target.report_id}:undefined,
       candidateLineage:Array.isArray(r.candidate_lineage)?r.candidate_lineage.filter((ref:any)=>typeof ref?.batch_id==='string'&&typeof ref?.report_id==='string').map((ref:any)=>({batch_id:ref.batch_id,report_id:ref.report_id})):undefined,
       name: r.shelter_name || 'Nama belum diketahui', village: r.village || 'Desa belum diketahui',
@@ -116,6 +122,8 @@ export function mergeCandidateOntoStored(base: Shelter[], candidate: Shelter[]):
     next.correctionTarget=cand.correctionTarget;
     next.candidateLineage=cand.candidateLineage;
     next.sourceBatchId=cand.sourceBatchId;
+    next.sourceReportId=cand.sourceReportId;
+    next.reportNotes=cand.reportNotes;
     const changes: string[] = [];
     for(const field of ['totalFamilies','children','breastfeeding','reportedAt','stock','stockContext','provenance','estimate','pendingClearFields'] as const){if(cand[field]!==undefined&&(cand.correctionTarget||cand[field]!==null))(next as any)[field]=cand[field];}
     if(cand.correctionTarget&&cand.name!==old.name){next.name=cand.name;changes.push(`nama posko ${old.name} → ${cand.name}`);}

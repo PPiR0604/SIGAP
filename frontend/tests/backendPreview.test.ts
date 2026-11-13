@@ -1,7 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { previewRows, storedRows, mergeCandidateOntoStored, retainUnchangedCalculations, pendingClearFields,matchesClarificationTarget } from '../src/backendPreview.ts';
+import { previewRows, storedRows, mergeCandidateOntoStored, retainUnchangedCalculations, pendingClearFields,matchesClarificationTarget,clarificationTarget } from '../src/backendPreview.ts';
 import { applyCalculations,metricValue } from '../src/needs.ts';
+
+test('merged report keeps its actual source pair when the old UI report ID is retained',()=>{
+ const old=storedRows([{batch_id:'initial',report_id:'R003',shelter_id:'kenanga',shelter_name:'Kenanga',village:'Mekarsari',total_people:46}]);
+ const incoming=previewRows({records:[{batch_id:'update',report_id:'R001',shelter_id:'kenanga',shelter_name:'Kenanga',village:'Mekarsari',total_people:46,male:23,female:25,notes:'Perlu konfirmasi'}]});
+ const row=mergeCandidateOntoStored(old,incoming)[0];
+ assert.equal(row.id,'R003');
+ assert.deepEqual(clarificationTarget(row),{report_id:'R001',batch_id:'update'});
+ assert.equal(row.reportNotes,'Perlu konfirmasi');
+});
 
 test('server candidate controls displayed IDs, unknown values and pending decisions', () => {
   const candidate = { records: [{ report_id: 'R777', shelter_name: 'Posko Baru', village: 'Desa A', total_people: 0, male: null, pending_clear_fields: ['disability', 'notes'] }] };

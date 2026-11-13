@@ -58,6 +58,7 @@ export type Shelter = {
     estimate?: boolean;
     changes?: string[];
     sourceBatchId?: string;
+    sourceReportId?: string;
     candidateLineage?: { batch_id: string; report_id: string }[];
     correctionTarget?: { batch_id: string; report_id: string };
     // Figma fields

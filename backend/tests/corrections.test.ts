@@ -86,6 +86,17 @@ test('original batch resolves the latest candidate through bound identity pairs'
   assert.throws(()=>correctionInput(`Koreksi laporan R002 (Posko Harapan) batch ${oldBatch}: lansianya 17`,{status:'ok',snapshot_id:snapshot,snapshot_sha256:sha,records:[candidate,candidate]},true),/ambigu/);
 });
 
+test('the actual report/batch pair corrects an update draft and supersedes that same draft',async()=>{
+ const source='b'.repeat(32);
+ const result=await prepare([row],`Mohon klarifikasi laporan R001 (Posko Harapan) batch ${source}: jumlah jiwa: 100.`,
+   'new',[{...row,batch_id:source,report_id:'R001'}]);
+ assert.ok(result.dispatched);
+ assert.deepEqual(JSON.parse(result.dispatched.filteredText!).candidate_target,
+   {snapshot_id:'3'.repeat(32),snapshot_sha256:'d'.repeat(64),record_index:0});
+ assert.equal(result.previousSuperseded,'4'.repeat(32));
+ assert.equal(result.previousApproval,'revoked');
+});
+
 test('ambiguous candidate never falls back to a uniquely matching stored row',async()=>{
   const result=await prepare([row],'Koreksi laporan R002 (Posko Harapan): lansianya 17','new',[row,{...row,batch_id:'other'}]);
   assert.equal(result.dispatched,undefined);

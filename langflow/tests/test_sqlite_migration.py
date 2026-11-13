@@ -41,6 +41,31 @@ from shelter_report_validator import ShelterReportValidator,merge_correction
 
 
 class StorageTests(unittest.TestCase):
+    def test_population_update_keeps_unreported_stock_without_new_measurement_or_fake_conflict(self):
+        stock = {'air_liter_per_hari': 360}
+        context = {'air_liter_per_hari': {'unit':'L','recorded_at':'2026-11-10 08:00','horizon_hours':24}}
+        proof = {'stock.air_liter_per_hari': {'batch_id':'original','report_id':'R001','reported_at':'2026-11-10 08:00'}}
+        stored = {'header':['posko','desa','shelter_id','disaster_id','stok_json','konteks_stok_json','provenance_json'],
+                  'rows':[['Sejahtera','Karangmulya','stable-id','',json.dumps(stock),json.dumps(context),json.dumps(proof)]]}
+        def candidate():
+            return {'shelter_name':'Sejahtera','village':'Karangmulya','total_people':52,
+                    'stock':{'air_liter_per_hari':None},
+                    'stock_context':{'air_liter_per_hari':{'unit':'L','recorded_at':None,'horizon_hours':None}}}
+        reviewed = compare_stored([candidate()], stored)[0]
+        self.assertEqual(reviewed['stock'], stock)
+        self.assertEqual(reviewed['stock_context'], context)
+        self.assertEqual(reviewed['field_provenance'], proof)
+        self.assertFalse(reviewed['storage_conflicts'])
+        changed = candidate()
+        changed['stock']['air_liter_per_hari'] = 0
+        reviewed = compare_stored([changed], stored)[0]
+        self.assertEqual(reviewed['stock']['air_liter_per_hari'], 0)
+        self.assertIsNone(reviewed['stock_context']['air_liter_per_hari']['recorded_at'])
+        self.assertEqual([c['field'] for c in reviewed['storage_conflicts']], ['stock'])
+        cleared = candidate()
+        cleared['pending_clear_fields'] = ['stock']
+        self.assertIsNone(compare_stored([cleared], stored)[0]['stock']['air_liter_per_hari'])
+
     def test_empty_store_candidate_tracks_absence_when_other_shelters_are_added(self):
         candidate=compare_stored([{'shelter_name':'Posko Uji','village':'Desa Uji'}],{'header':[],'rows':[]})[0]
         baseline=json.loads(json.dumps(candidate['storage_baseline']))

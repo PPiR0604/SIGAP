@@ -6,8 +6,8 @@ import { shelters, sampleReport, bulletin, type Shelter, type RequirementKey } f
 import { approveDemoReview, validateReportFile, isOcrDocument, type ClearDecision } from './review';
 import { checkBackendHealth, createBackendSession, sendBackendMessage, submitBatchDecision, ensureSessionToken, extractReportDocument, authenticatedRequest, HttpResponseError, type DocumentExtraction, type HealthResponse } from './api';
 import { connectEventStream } from './stream';
-import { previewRows, storedRows, pendingClearFields, matchesClarificationTarget, type Preview } from './backendPreview';
-import { receiveReview, pendingRows, reviewForShelter, reviewLabel, applyReviewCalculations, type PendingReview } from './pendingReviews';
+import { previewRows, storedRows, pendingClearFields, matchesClarificationTarget, clarificationTarget, type Preview } from './backendPreview';
+import { receiveReview, pendingRows, reviewForShelter, reviewLabel, olderReview, applyReviewCalculations, type PendingReview } from './pendingReviews';
 import { ChatDock } from './ChatDock';
 import { ChangeSummary } from './ChangeSummary';
 import { TasksView } from './TasksView';
@@ -338,12 +338,11 @@ export default function App({ contextId = 'posko-sumedang', operator = 'Operator
   useEffect(() => { if (modal) dialog.current?.showModal(); else dialog.current?.close(); }, [modal]);
   useEffect(() => {
     if (page !== 'Klarifikasi' || !detailKey) return;
-    if (detailBinding.current !== detailKey || !detail) {
-      const row = activeRows.find(s => stableShelterKey(s) === detailKey);
-      if (detailBinding.current !== detailKey) { setClarificationField(undefined); setClarificationFeedback(null); }
-      detailBinding.current = detailKey;
-      setDetail(row || null);
-    }
+    const row=activeRows.find(s=>stableShelterKey(s)===detailKey)
+      ||(detailBinding.current===detailKey&&detail?activeRows.find(s=>matchesClarificationTarget(s,detail)):undefined);
+    if (detailBinding.current !== detailKey) { setClarificationField(undefined); setClarificationFeedback(null); }
+    detailBinding.current=detailKey;
+    if(row!==detail)setDetail(row||null);
   }, [page, detailKey, activeRows, detail]);
   useEffect(() => { if (previousPage.current !== page) { previousPage.current = page; heading.current?.focus(); } if (page === 'Laporan' && focusComposer.current) { focusComposer.current = false; composer.current?.focus(); } }, [page, detail]);
   useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(''), 5000); return () => clearTimeout(timer); }, [notice]);
@@ -528,7 +527,7 @@ export default function App({ contextId = 'posko-sumedang', operator = 'Operator
 
   function reviewPicker(forConflict=false) {
     if(page==='Konflik'&&!forConflict)return null;
-    return pendingReviews.length > 0 && <div className="pending-reviews"><label className="field-label">Perubahan yang akan disimpan<select aria-label="Perubahan yang akan disimpan" value={candidateBatchId} disabled={processing || dispatching} onChange={e => activateReview(pendingReviews.find(review => review.batchId === e.target.value) || null)}>{pendingReviews.map(review => <option key={review.batchId} value={review.batchId}>{reviewLabel(review)}{submittedReviews.current.has(review.batchId) ? ' · keputusan terkirim' : ''}</option>)}</select></label><p>{pendingReviews.length} perubahan menunggu. Persetujuan hanya untuk pilihan ini.</p></div>;
+    return pendingReviews.length > 0 && <div className="pending-reviews"><label className="field-label">Perubahan yang akan disimpan<select aria-label="Perubahan yang akan disimpan" value={candidateBatchId} disabled={processing || dispatching} onChange={e => activateReview(pendingReviews.find(review => review.batchId === e.target.value) || null)}>{pendingReviews.map(review => <option key={review.batchId} value={review.batchId}>{reviewLabel(review)}{olderReview(review,storedBase.current)?' · laporan lebih lama':''}{submittedReviews.current.has(review.batchId) ? ' · keputusan terkirim' : ''}</option>)}</select></label><p>{pendingReviews.length} perubahan menunggu. Persetujuan hanya untuk pilihan ini.</p></div>;
   }
 
   function openApproval() {
@@ -596,7 +595,7 @@ export default function App({ contextId = 'posko-sumedang', operator = 'Operator
   async function clarify(s: Shelter, text: string, expected: ClarificationChanges, structured = false) {
     if (!health || !sessionId || !browserOnline) {
       if(dispatchInFlight.current)return;
-      const report=s.correctionTarget?.report_id??s.id,batch=s.correctionTarget?.batch_id??s.sourceBatchId;
+      const {report_id:report,batch_id:batch}=clarificationTarget(s);
       if(!structured||!batch||!s.calculationKey){setClarificationFeedback({kind:'error',text:'Salinan belum memiliki referensi koreksi lengkap. Simpan laporan manual di Catatan offline atau buka data terbaru saat online.'});return;}
       dispatchInFlight.current=true;setDispatching(true);
       try{await addReport(`Mohon klarifikasi laporan ${report} (${s.name}) batch ${batch}: ${text}`,{owner:preferenceKey,contextId,payload:{target:{report_id:report,batch_id:batch,name:s.name,village:s.village},base_key:s.calculationKey,changes:expected}});setClarificationFeedback({kind:'success',text:'Draf tersimpan di antrean perangkat. Belum dikirim atau disimpan ke rekap.'});}
@@ -604,7 +603,7 @@ export default function App({ contextId = 'posko-sumedang', operator = 'Operator
       finally{dispatchInFlight.current=false;setDispatching(false);}return;
     }
     if (processing || dispatchInFlight.current) { setClarificationFeedback({ kind: 'error', text: 'Tunggu proses yang sedang berjalan sebelum mengirim perubahan.' }); return; }
-    const report = s.correctionTarget?.report_id ?? s.id, batch = s.correctionTarget?.batch_id ?? s.sourceBatchId;
+    const {report_id:report,batch_id:batch}=clarificationTarget(s);
     clarificationAttempt.current = { shelter: s, expected, received: false };
     setClarificationFeedback({ kind: 'pending', text: 'Memvalidasi perubahan. Angka lama tetap ditampilkan sampai kandidat baru diterima.' });
     const correction = structured && batch && s.calculationKey ? { target: { report_id: report, batch_id: batch, name: s.name, village: s.village }, base_key: s.calculationKey, changes: expected } : undefined;

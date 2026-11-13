@@ -266,7 +266,17 @@ export class GeminiAgentRuntime implements AgentRuntime {
             try{const input=JSON.parse(call.args.input_value);sourceMatches=!!sourceReference&&input.batch_id===sourceReference.batch_id&&input.source_sha256===sourceReference.source_sha256;}
             catch{sourceMatches=false;}
           }
-          if(!sourceMatches)output={error:{code:'SOURCE_MISMATCH',message:'Gunakan teks laporan asli dan SOURCE_REF dari prepare pada operasi ini persis.'}};
+          if(!sourceMatches){
+            const message='Gunakan teks laporan asli dan SOURCE_REF dari prepare pada operasi ini persis.';
+            if(name==='validate_needs'){
+              validationFailure=message;
+              if(++validationFailures>=3)throw new ToolValidationError(message);
+            }
+            output={error:{code:'SOURCE_MISMATCH',message,...(name==='validate_needs'?{
+              source_reference:sourceReference,
+              instruction:sourceReference?'Perbaiki referensi pada records hasil ekstraksi laporan AKTIF, lalu panggil validate_needs dengan source_reference ini persis. Jangan menggunakan records laporan lama atau mengakhiri operasi sebelum validasi.':'Jalankan prepare_needs untuk laporan aktif terlebih dahulu; belum ada sumber yang dapat divalidasi.'
+            }:{})}};
+          }
           if(tool&&name&&sourceMatches&&!(name==='upsert_shelter'&&writeDispatched)){
             const permission=await cancellable(gate(options.sessionId,{toolName:call.name,args:call.args,toolCallId:callId}),signal);
             signal.throwIfAborted();

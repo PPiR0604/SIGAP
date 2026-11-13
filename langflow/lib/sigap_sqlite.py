@@ -209,11 +209,24 @@ def compare_stored(records, stored):
             old[field]=json.loads(old.get(field) or '{}')
         old['reported_at']=cells.get('waktu_laporan')
         old['field_provenance']=json.loads(cells.get('provenance_json') or '{}')
+        # The writer retains unreported quantities. Show that same effective
+        # stock in the signed review, with the original measurement provenance.
+        # A changed explicit quantity never inherits an old measurement time.
+        if 'stock' not in record.get('pending_clear_fields', []):
+            for metric, amount in old.get('stock', {}).items():
+                if amount is not None and record.get('stock', {}).get(metric) is None:
+                    record.setdefault('stock', {})[metric] = amount
+                    if 'stock_context' not in record.get('pending_clear_fields', []):
+                        record.setdefault('stock_context', {})[metric] = json.loads(json.dumps(old.get('stock_context', {}).get(metric, {})))
+                    proof = old['field_provenance'].get('stock.' + metric)
+                    if proof:
+                        record.setdefault('field_provenance', {})['stock.' + metric] = json.loads(json.dumps(proof))
         conflicts = []
         for field,column in columns.items():
             before,after = old.get(field),record.get(field)
             if field in ('stock','stock_context') and isinstance(after,dict):
-                active={k:v for k,v in after.items() if v not in (None,'',{})}
+                active={k:v for k,v in after.items() if v not in (None,'',{})
+                        and (field != 'stock_context' or any(value not in (None,'') for name,value in v.items() if name != 'unit'))}
                 different=any(before.get(k) is not None and before.get(k)!=v for k,v in active.items()) if isinstance(before,dict) else False
             elif field in ('urgent_needs','surplus_do_not_send'):
                 item_text=lambda items:[(v.get('item','')+(f" ({v['qty']} {v.get('unit') or ''})".rstrip() if v.get('qty') else '')) if isinstance(v,dict) else str(v) for v in (items or [])]

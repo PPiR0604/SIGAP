@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {SigapRepository} from '../src/db/repo.js';
 import {BatchOrchestrator} from '../src/pipeline/orchestrator.js';
-import {renderWaterRanking,renderPriorityRanking,calculateAllNeeds} from '../src/pipeline/needsScope.js';
+import {renderWaterRanking,renderPriorityRanking,renderAllNeeds,calculateAllNeeds} from '../src/pipeline/needsScope.js';
 import {createEvent} from '../src/acp/events.js';
 import type {AgentRuntime} from '../src/acp/types.js';
 
@@ -10,6 +10,30 @@ const storedId='1'.repeat(32),draftId='2'.repeat(32),storedHash='a'.repeat(64),d
 const stored=[{batch_id:'old',report_id:'R001',shelter_name:'Posko A',village:'Desa A',total_people:10,urgent_needs:['air']},
   {batch_id:'old',report_id:'R002',shelter_name:'Posko B',village:'Desa B',total_people:20,urgent_needs:['beras']}];
 const draft=[{...stored[0],batch_id:'new',total_people:12,update_target:{batch_id:'old',report_id:'R001'}}];
+
+test('all-needs answer includes verified population and water totals without another model calculation',async()=>{
+ const records=[52,32,48].map((total_people,i)=>({shelter_name:'Posko '+i,village:'Desa '+i,total_people}));
+ const scope={snapshot_id:storedId,snapshot_sha256:storedHash,records,kind:'stored' as const};
+ const result=await calculateAllNeeds([scope],async ref=>JSON.stringify(calculation(records,ref)));
+ const text=renderAllNeeds(result);
+ assert.match(text,/Jumlah jiwa terdata: \*\*132\*\*/);
+ assert.match(text,/Kebutuhan air: \*\*1\.980 L\/24 jam\*\*/);
+ assert.doesNotMatch(text,/Total masih parsial/);
+ assert.match(renderAllNeeds({...result,partial:true}),/Total masih parsial/);
+});
+
+test('an earlier candidate cannot replace newer stored counts and needs no redundant calculation',async()=>{
+ const records=[{...stored[0],shelter_id:'a',total_people:48,reported_at:'2026-11-10 08:35'},stored[1]];
+ const old=[{...records[0],total_people:46,reported_at:'2026-11-10T08:30'}];
+ const scopes=[{snapshot_id:storedId,snapshot_sha256:storedHash,records,kind:'stored' as const},
+   {snapshot_id:draftId,snapshot_sha256:draftHash,records:old,kind:'candidate' as const}];
+ const calls:string[]=[];
+ const result=await calculateAllNeeds(scopes,async ref=>{calls.push(ref.snapshot_id);return JSON.stringify(calculation(ref.snapshot_id===storedId?records:old,ref));});
+ assert.deepEqual(calls,[storedId]);
+ assert.equal(result.totals.total_people,68);
+ assert.equal(result.pending_candidates,false);
+ assert.equal(result.snapshot_refs.length,1);
+});
 
 function calculation(records:any[],ref:{snapshot_id:string;snapshot_sha256:string}){
   return {...ref,shelters:records.map(r=>({...r,priority:'SEDANG',needs:{air_liter_per_hari:{value:r.total_people*15},kkal_per_hari:{value:r.total_people*2100},jamban_unit:{value:Math.ceil(r.total_people/20)},ruang_hunian_m2:{value:r.total_people*3.5}},gaps:{}})),totals:{total_people:records.reduce((n,r)=>n+r.total_people,0)}};

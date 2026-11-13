@@ -84,6 +84,36 @@ test('rejected read-only extraction can be repaired against the same source befo
   }finally{await runtime.shutdown();await mcp.close();}
 });
 
+test('a stale model source reference is rejected locally then repaired using the active source',async()=>{
+ const mcp=await scenarioMcp();
+ const script=scriptedModel([call('sigap_1_prepare_needs',{input_value:'Posko Uji 10 jiwa.'}),
+   call('sigap_2_validate_needs',{input_value:JSON.stringify({batch_id:'previous-source',source_sha256:'previous-hash',records:[]})}),
+   call('sigap_2_validate_needs',{input_value:JSON.stringify({batch_id:'source',source_sha256:'hash',records:[]})}),done]);
+ const runtime=new GeminiAgentRuntime(settings,script.model);const events:any[]=[];
+ try{
+   await runtime.initSession({sessionId:'one',contextId:'test',mcpServerConfig:[{name:'langflow',type:'http',url:mcp.url,headers:[]}]});
+   await runtime.sendPrompt(options,e=>events.push(e),allow);
+   const response=(script.inputs[2].contents.at(-1)!.parts[0] as any).functionResponse.response.result.error;
+   assert.equal(response.code,'SOURCE_MISMATCH');
+   assert.deepEqual(response.source_reference,{batch_id:'source',source_sha256:'hash'});
+   assert.deepEqual(mcp.requests.filter(r=>r.method==='tools/call').map(r=>r.params.name),['sigap_1_prepare_needs','sigap_2_validate_needs']);
+   assert.equal(events.filter(e=>e.event_type==='preview_ready').length,1);
+ }finally{await runtime.shutdown();await mcp.close();}
+});
+
+test('unrepaired stale references cannot be reported as a completed validation',async()=>{
+ const mcp=await scenarioMcp();
+ const script=scriptedModel([call('sigap_1_prepare_needs',{input_value:'Posko Uji 10 jiwa.'}),
+   call('sigap_2_validate_needs',{input_value:JSON.stringify({batch_id:'wrong',source_sha256:'wrong',records:[]})}),done]);
+ const runtime=new GeminiAgentRuntime(settings,script.model);const events:any[]=[];
+ try{
+   await runtime.initSession({sessionId:'one',contextId:'test',mcpServerConfig:[{name:'langflow',type:'http',url:mcp.url,headers:[]}]});
+   await assert.rejects(runtime.sendPrompt(options,e=>events.push(e),allow),/SOURCE_REF/);
+   assert.equal(events.some(e=>e.event_type==='preview_ready'||e.event_type==='assistant_message'),false);
+   assert.equal(mcp.requests.filter(r=>r.method==='tools/call'&&r.params.name==='sigap_2_validate_needs').length,0);
+ }finally{await runtime.shutdown();await mcp.close();}
+});
+
 test('persistent extraction rejection stops after three attempts and never emits a false preview',async()=>{
   let attempts=0;
   const mcp=await scenarioMcp(name=>name==='sigap_2_validate_needs'?(attempts++,{content:[{type:'text',text:'GAGAL: Nama posko tidak cocok.'}]}):undefined);
@@ -147,7 +177,7 @@ test('Gemini source text and validator reference must belong to this operation',
   const runtime=new GeminiAgentRuntime(settings,script.model);
   try{
     await runtime.initSession({sessionId:'one',contextId:'test',mcpServerConfig:[{name:'langflow',type:'http',url:mcp.url,headers:[]}]});
-    await runtime.sendPrompt({...options,filteredText:'Original source'},()=>{},allow);
+    await assert.rejects(runtime.sendPrompt({...options,filteredText:'Original source'},()=>{},allow),/SOURCE_REF/);
     const requests=mcp.requests.filter(r=>r.method==='tools/call');
     assert.equal(requests.length,1);assert.equal(requests[0].params.arguments.input_value,'Original source');
   }finally{await runtime.shutdown();await mcp.close();}

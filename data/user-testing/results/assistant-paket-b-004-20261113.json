@@ -1,0 +1,781 @@
+{
+  "record_id": "assistant-paket-b-004-20261113",
+  "evidence_kind": "assistant_operated_live_system_trial",
+  "date_wib": "2026-11-13",
+  "operator": "AI assistant",
+  "human_user_trial": false,
+  "synthetic_reports": true,
+  "prior_knowledge": "Assistant has read the package and scoring key; not a blinded participant.",
+  "scope": [
+    "T01",
+    "T02",
+    "T03",
+    "T04"
+  ],
+  "excluded_tasks": [
+    "T05"
+  ],
+  "context_id": "uji-paket-b-004-20261113",
+  "initial_state": "New empty workspace verified before timer start",
+  "status": "completed_accurate_scored_facts_with_extra_forwarded_note_review",
+  "provider": "openai",
+  "active_model": "zd/gpt-6-luna",
+  "application_commit": "aec5ccdb61c050d90cc943bacd97291f44fe61ed",
+  "application_patch_sha256": "971e4dc2134646ee52b212cc72f6638b590179ba66084cb8a12fb9bc216cdc35",
+  "code_unchanged_during_trial": true,
+  "package_sha256": "e207069fb526bd60626a250dce4b07aa6a440adb8ff638ee87c7cdb1746dc6bc",
+  "timing": {
+    "task_seconds": {
+      "T01": 69.1273212,
+      "T02": 61.4746455,
+      "T03": 128.42927,
+      "T04": 26.7366959
+    },
+    "sum_task_seconds": 285.7679326,
+    "continuous_total_seconds": 286.0686579,
+    "method": "perf_counter_ns; includes reading, browser/tool interaction, waiting, review, approval and corrections. Setup and login excluded. Continuous total includes inter-task transitions.",
+    "excluded_setup_and_login": true,
+    "subtracted_delay_seconds": 0
+  },
+  "primary_scoring": {
+    "per_task": {
+      "T01": {
+        "correct": 18,
+        "assessed": 18
+      },
+      "T02": {
+        "correct": 9,
+        "assessed": 9
+      },
+      "T03": {
+        "correct": 10,
+        "assessed": 10
+      },
+      "T04": {
+        "correct": 6,
+        "assessed": 6
+      }
+    },
+    "correct": 43,
+    "assessed": 43,
+    "scope": "Stored stage data and six answers submitted by assistant operator; not a raw-model-answer-only score"
+  },
+  "checks": [
+    {
+      "task": "T01",
+      "shelter": "Sejahtera/Karangmulya",
+      "field": "name",
+      "expected": "Sejahtera",
+      "actual": "Sejahtera",
+      "correct": true
+    },
+    {
+      "task": "T01",
+      "shelter": "Sejahtera/Karangmulya",
+      "field": "village",
+      "expected": "Karangmulya",
+      "actual": "Karangmulya",
+      "correct": true
+    },
+    {
+      "task": "T01",
+      "shelter": "Sejahtera/Karangmulya",
+      "field": "people",
+      "expected": 44,
+      "actual": 44,
+      "correct": true
+    },
+    {
+      "task": "T01",
+      "shelter": "Sejahtera/Karangmulya",
+      "field": "male",
+      "expected": 20,
+      "actual": 20,
+      "correct": true
+    },
+    {
+      "task": "T01",
+      "shelter": "Sejahtera/Karangmulya",
+      "field": "female",
+      "expected": 24,
+      "actual": 24,
+      "correct": true
+    },
+    {
+      "task": "T01",
+      "shelter": "Sejahtera/Karangmulya",
+      "field": "water_stock",
+      "expected": 360,
+      "actual": 360,
+      "correct": true
+    },
+    {
+      "task": "T01",
+      "shelter": "Sejahtera/Cibening",
+      "field": "name",
+      "expected": "Sejahtera",
+      "actual": "Sejahtera",
+      "correct": true
+    },
+    {
+      "task": "T01",
+      "shelter": "Sejahtera/Cibening",
+      "field": "village",
+      "expected": "Cibening",
+      "actual": "Cibening",
+      "correct": true
+    },
+    {
+      "task": "T01",
+      "shelter": "Sejahtera/Cibening",
+      "field": "people",
+      "expected": 32,
+      "actual": 32,
+      "correct": true
+    },
+    {
+      "task": "T01",
+      "shelter": "Sejahtera/Cibening",
+      "field": "male",
+      "expected": 15,
+      "actual": 15,
+      "correct": true
+    },
+    {
+      "task": "T01",
+      "shelter": "Sejahtera/Cibening",
+      "field": "female",
+      "expected": 17,
+      "actual": 17,
+      "correct": true
+    },
+    {
+      "task": "T01",
+      "shelter": "Sejahtera/Cibening",
+      "field": "water_stock",
+      "expected": 0,
+      "actual": 0,
+      "correct": true
+    },
+    {
+      "task": "T01",
+      "shelter": "Kenanga/Mekarsari",
+      "field": "name",
+      "expected": "Kenanga",
+      "actual": "Kenanga",
+      "correct": true
+    },
+    {
+      "task": "T01",
+      "shelter": "Kenanga/Mekarsari",
+      "field": "village",
+      "expected": "Mekarsari",
+      "actual": "Mekarsari",
+      "correct": true
+    },
+    {
+      "task": "T01",
+      "shelter": "Kenanga/Mekarsari",
+      "field": "people",
+      "expected": 46,
+      "actual": 46,
+      "correct": true
+    },
+    {
+      "task": "T01",
+      "shelter": "Kenanga/Mekarsari",
+      "field": "male",
+      "expected": null,
+      "actual": null,
+      "correct": true
+    },
+    {
+      "task": "T01",
+      "shelter": "Kenanga/Mekarsari",
+      "field": "female",
+      "expected": null,
+      "actual": null,
+      "correct": true
+    },
+    {
+      "task": "T01",
+      "shelter": "Kenanga/Mekarsari",
+      "field": "water_stock",
+      "expected": null,
+      "actual": null,
+      "correct": true
+    },
+    {
+      "task": "T02",
+      "shelter": "Sejahtera/Karangmulya",
+      "field": "people",
+      "expected": 52,
+      "actual": 52,
+      "correct": true
+    },
+    {
+      "task": "T02",
+      "shelter": "Sejahtera/Karangmulya",
+      "field": "male",
+      "expected": 24,
+      "actual": 24,
+      "correct": true
+    },
+    {
+      "task": "T02",
+      "shelter": "Sejahtera/Karangmulya",
+      "field": "female",
+      "expected": 28,
+      "actual": 28,
+      "correct": true
+    },
+    {
+      "task": "T02",
+      "shelter": "Sejahtera/Cibening",
+      "field": "people",
+      "expected": 32,
+      "actual": 32,
+      "correct": true
+    },
+    {
+      "task": "T02",
+      "shelter": "Sejahtera/Cibening",
+      "field": "male",
+      "expected": 15,
+      "actual": 15,
+      "correct": true
+    },
+    {
+      "task": "T02",
+      "shelter": "Sejahtera/Cibening",
+      "field": "female",
+      "expected": 17,
+      "actual": 17,
+      "correct": true
+    },
+    {
+      "task": "T02",
+      "shelter": "Kenanga/Mekarsari",
+      "field": "people",
+      "expected": 46,
+      "actual": 46,
+      "correct": true
+    },
+    {
+      "task": "T02",
+      "shelter": "Kenanga/Mekarsari",
+      "field": "male",
+      "expected": null,
+      "actual": null,
+      "correct": true
+    },
+    {
+      "task": "T02",
+      "shelter": "Kenanga/Mekarsari",
+      "field": "female",
+      "expected": null,
+      "actual": null,
+      "correct": true
+    },
+    {
+      "task": "T03",
+      "shelter": "Sejahtera/Karangmulya",
+      "field": "people",
+      "expected": 52,
+      "actual": 52,
+      "correct": true
+    },
+    {
+      "task": "T03",
+      "shelter": "Sejahtera/Karangmulya",
+      "field": "male",
+      "expected": 24,
+      "actual": 24,
+      "correct": true
+    },
+    {
+      "task": "T03",
+      "shelter": "Sejahtera/Karangmulya",
+      "field": "female",
+      "expected": 28,
+      "actual": 28,
+      "correct": true
+    },
+    {
+      "task": "T03",
+      "shelter": "Sejahtera/Cibening",
+      "field": "people",
+      "expected": 32,
+      "actual": 32,
+      "correct": true
+    },
+    {
+      "task": "T03",
+      "shelter": "Sejahtera/Cibening",
+      "field": "male",
+      "expected": 15,
+      "actual": 15,
+      "correct": true
+    },
+    {
+      "task": "T03",
+      "shelter": "Sejahtera/Cibening",
+      "field": "female",
+      "expected": 17,
+      "actual": 17,
+      "correct": true
+    },
+    {
+      "task": "T03",
+      "shelter": "Kenanga/Mekarsari",
+      "field": "people",
+      "expected": 48,
+      "actual": 48,
+      "correct": true
+    },
+    {
+      "task": "T03",
+      "shelter": "Kenanga/Mekarsari",
+      "field": "male",
+      "expected": 23,
+      "actual": 23,
+      "correct": true
+    },
+    {
+      "task": "T03",
+      "shelter": "Kenanga/Mekarsari",
+      "field": "female",
+      "expected": 25,
+      "actual": 25,
+      "correct": true
+    },
+    {
+      "task": "T03",
+      "field": "shelter_count",
+      "expected": 3,
+      "actual": 3,
+      "correct": true
+    },
+    {
+      "task": "T04",
+      "question": 1,
+      "correct": true
+    },
+    {
+      "task": "T04",
+      "question": 2,
+      "correct": true
+    },
+    {
+      "task": "T04",
+      "question": 3,
+      "correct": true
+    },
+    {
+      "task": "T04",
+      "question": 4,
+      "correct": true
+    },
+    {
+      "task": "T04",
+      "question": 5,
+      "correct": true
+    },
+    {
+      "task": "T04",
+      "question": 6,
+      "correct": true
+    }
+  ],
+  "stage_rows": {
+    "T01": [
+      {
+        "male": 20,
+        "name": "Sejahtera",
+        "needs": "air bersih",
+        "stock": {
+          "jamban_unit": null,
+          "kkal_per_hari": null,
+          "ruang_hunian_m2": null,
+          "air_liter_per_hari": 360
+        },
+        "female": 24,
+        "people": 44,
+        "village": "Karangmulya",
+        "reported_at": "2026-11-10 08:00",
+        "stock_context": {
+          "jamban_unit": {
+            "unit": "unit",
+            "recorded_at": null
+          },
+          "kkal_per_hari": {
+            "unit": "kkal",
+            "recorded_at": null,
+            "horizon_hours": null
+          },
+          "ruang_hunian_m2": {
+            "unit": "m2",
+            "recorded_at": null
+          },
+          "air_liter_per_hari": {
+            "unit": "L",
+            "recorded_at": "2026-11-10 08:00",
+            "horizon_hours": 24
+          }
+        }
+      },
+      {
+        "male": 15,
+        "name": "Sejahtera",
+        "needs": "air bersih",
+        "stock": {
+          "jamban_unit": null,
+          "kkal_per_hari": null,
+          "ruang_hunian_m2": null,
+          "air_liter_per_hari": 0
+        },
+        "female": 17,
+        "people": 32,
+        "village": "Cibening",
+        "reported_at": "2026-11-10 08:02",
+        "stock_context": {
+          "jamban_unit": {
+            "unit": "unit",
+            "recorded_at": null
+          },
+          "kkal_per_hari": {
+            "unit": "kkal",
+            "recorded_at": null,
+            "horizon_hours": null
+          },
+          "ruang_hunian_m2": {
+            "unit": "m2",
+            "recorded_at": null
+          },
+          "air_liter_per_hari": {
+            "unit": "L",
+            "recorded_at": "2026-11-10 08:02",
+            "horizon_hours": 24
+          }
+        }
+      },
+      {
+        "male": null,
+        "name": "Kenanga",
+        "needs": "selimut",
+        "stock": {
+          "jamban_unit": null,
+          "kkal_per_hari": null,
+          "ruang_hunian_m2": null,
+          "air_liter_per_hari": null
+        },
+        "female": null,
+        "people": 46,
+        "village": "Mekarsari",
+        "reported_at": "2026-11-10 08:04",
+        "stock_context": {
+          "jamban_unit": {
+            "unit": "unit",
+            "recorded_at": null
+          },
+          "kkal_per_hari": {
+            "unit": "kkal",
+            "recorded_at": null,
+            "horizon_hours": null
+          },
+          "ruang_hunian_m2": {
+            "unit": "m2",
+            "recorded_at": null
+          },
+          "air_liter_per_hari": {
+            "unit": "L",
+            "recorded_at": null,
+            "horizon_hours": null
+          }
+        }
+      }
+    ],
+    "T02": [
+      {
+        "male": 24,
+        "name": "Sejahtera",
+        "needs": "air bersih",
+        "stock": {
+          "jamban_unit": null,
+          "kkal_per_hari": null,
+          "ruang_hunian_m2": null,
+          "air_liter_per_hari": 360
+        },
+        "female": 28,
+        "people": 52,
+        "village": "Karangmulya",
+        "reported_at": "2026-11-10 08:20",
+        "stock_context": {
+          "jamban_unit": {
+            "unit": "unit",
+            "recorded_at": null
+          },
+          "kkal_per_hari": {
+            "unit": "kkal",
+            "recorded_at": null,
+            "horizon_hours": null
+          },
+          "ruang_hunian_m2": {
+            "unit": "m2",
+            "recorded_at": null
+          },
+          "air_liter_per_hari": {
+            "unit": "L",
+            "recorded_at": "2026-11-10 08:00",
+            "horizon_hours": 24
+          }
+        }
+      },
+      {
+        "male": 15,
+        "name": "Sejahtera",
+        "needs": "air bersih",
+        "stock": {
+          "jamban_unit": null,
+          "kkal_per_hari": null,
+          "ruang_hunian_m2": null,
+          "air_liter_per_hari": 0
+        },
+        "female": 17,
+        "people": 32,
+        "village": "Cibening",
+        "reported_at": "2026-11-10 08:02",
+        "stock_context": {
+          "jamban_unit": {
+            "unit": "unit",
+            "recorded_at": null
+          },
+          "kkal_per_hari": {
+            "unit": "kkal",
+            "recorded_at": null,
+            "horizon_hours": null
+          },
+          "ruang_hunian_m2": {
+            "unit": "m2",
+            "recorded_at": null
+          },
+          "air_liter_per_hari": {
+            "unit": "L",
+            "recorded_at": "2026-11-10 08:02",
+            "horizon_hours": 24
+          }
+        }
+      },
+      {
+        "male": null,
+        "name": "Kenanga",
+        "needs": "selimut",
+        "stock": {
+          "jamban_unit": null,
+          "kkal_per_hari": null,
+          "ruang_hunian_m2": null,
+          "air_liter_per_hari": null
+        },
+        "female": null,
+        "people": 46,
+        "village": "Mekarsari",
+        "reported_at": "2026-11-10 08:04",
+        "stock_context": {
+          "jamban_unit": {
+            "unit": "unit",
+            "recorded_at": null
+          },
+          "kkal_per_hari": {
+            "unit": "kkal",
+            "recorded_at": null,
+            "horizon_hours": null
+          },
+          "ruang_hunian_m2": {
+            "unit": "m2",
+            "recorded_at": null
+          },
+          "air_liter_per_hari": {
+            "unit": "L",
+            "recorded_at": null,
+            "horizon_hours": null
+          }
+        }
+      }
+    ],
+    "T03": [
+      {
+        "male": 24,
+        "name": "Sejahtera",
+        "needs": "air bersih",
+        "stock": {
+          "jamban_unit": null,
+          "kkal_per_hari": null,
+          "ruang_hunian_m2": null,
+          "air_liter_per_hari": 360
+        },
+        "female": 28,
+        "people": 52,
+        "village": "Karangmulya",
+        "reported_at": "2026-11-10 08:20",
+        "stock_context": {
+          "jamban_unit": {
+            "unit": "unit",
+            "recorded_at": null
+          },
+          "kkal_per_hari": {
+            "unit": "kkal",
+            "recorded_at": null,
+            "horizon_hours": null
+          },
+          "ruang_hunian_m2": {
+            "unit": "m2",
+            "recorded_at": null
+          },
+          "air_liter_per_hari": {
+            "unit": "L",
+            "recorded_at": "2026-11-10 08:00",
+            "horizon_hours": 24
+          }
+        }
+      },
+      {
+        "male": 15,
+        "name": "Sejahtera",
+        "needs": "air bersih",
+        "stock": {
+          "jamban_unit": null,
+          "kkal_per_hari": null,
+          "ruang_hunian_m2": null,
+          "air_liter_per_hari": 0
+        },
+        "female": 17,
+        "people": 32,
+        "village": "Cibening",
+        "reported_at": "2026-11-10 08:02",
+        "stock_context": {
+          "jamban_unit": {
+            "unit": "unit",
+            "recorded_at": null
+          },
+          "kkal_per_hari": {
+            "unit": "kkal",
+            "recorded_at": null,
+            "horizon_hours": null
+          },
+          "ruang_hunian_m2": {
+            "unit": "m2",
+            "recorded_at": null
+          },
+          "air_liter_per_hari": {
+            "unit": "L",
+            "recorded_at": "2026-11-10 08:02",
+            "horizon_hours": 24
+          }
+        }
+      },
+      {
+        "male": 23,
+        "name": "Kenanga",
+        "needs": "selimut",
+        "stock": {
+          "jamban_unit": null,
+          "kkal_per_hari": null,
+          "ruang_hunian_m2": null,
+          "air_liter_per_hari": null
+        },
+        "female": 25,
+        "people": 48,
+        "village": "Mekarsari",
+        "reported_at": "2026-11-10 08:35",
+        "stock_context": {
+          "jamban_unit": {
+            "unit": "unit",
+            "recorded_at": null
+          },
+          "kkal_per_hari": {
+            "unit": "kkal",
+            "recorded_at": null,
+            "horizon_hours": null
+          },
+          "ruang_hunian_m2": {
+            "unit": "m2",
+            "recorded_at": null
+          },
+          "air_liter_per_hari": {
+            "unit": "L",
+            "recorded_at": null,
+            "horizon_hours": null
+          }
+        }
+      }
+    ]
+  },
+  "submitted_T04_answers": {
+    "shelters": 3,
+    "people": 132,
+    "water_need_l_per_24h": 1980,
+    "karangmulya_gap": 420,
+    "cibening_gap": 480,
+    "kenanga_gap": null,
+    "zero_distinguished_from_unknown": true
+  },
+  "raw_model_T04_output": {
+    "included": [
+      "3 shelters",
+      "132 people",
+      "1980 L per 24 h",
+      "water gaps 420/480/unknown"
+    ],
+    "operator_contribution": "Wrote six numbered answers and explained known zero versus unknown stock using already-reviewed source data."
+  },
+  "verification": {
+    "storage_write_count": 6,
+    "final_storage_revision": 6,
+    "final_shelter_count": 3,
+    "final_document_md5": "3c297ef9c4466b70ec47259c80cd42a6",
+    "server_error_event_count": 0,
+    "pending_review_snapshot_count": 0,
+    "all_scoped_message_and_decision_posts_accepted": true,
+    "structured_candidate_correction_succeeded_first_attempt": true,
+    "old_kenanga_candidate_no_longer_masked_saved_result": true,
+    "stock_timestamp_preserved_at_0800_in_0820_update": true,
+    "forwarded_report_did_not_add_shelter_or_people": true
+  },
+  "remaining_workflow_observation": {
+    "task": "T03",
+    "description": "Forwarded Cibening report introduced a note saying it was a forwarded report; a separate review/approval remained necessary.",
+    "primary_data_unchanged": true,
+    "extra_write_to_existing_shelter": true,
+    "new_shelter_created": false,
+    "included_in_time": true
+  },
+  "operator_issues_included_in_time": [
+    "One strict locator matched three visible 52 values during T02; navigation continued via the conflict page. No timeout duration was subtracted."
+  ],
+  "clarification": {
+    "standard_card_requested_after_inconsistency_observed": true,
+    "facilitator_prompted": false,
+    "resubmission_via_chat_needed": false
+  },
+  "ease_rating_1_7": null,
+  "comparisons": {
+    "previous_assistant_trial_seconds": 898.6871753,
+    "manual_user_reported_seconds": 901.4,
+    "paired_human_comparison": false,
+    "human_time_saving_percent": null,
+    "interpretation": "Descriptive repeat by an assistant already familiar with the task; automation/navigation also differed. No causal effectiveness estimate."
+  },
+  "evidence": [
+    "output/assistant-paket-b-004-20261113/timing.json",
+    "output/assistant-paket-b-004-20261113/storage-stages.json",
+    "output/assistant-paket-b-004-20261113/answers-T04.md",
+    "output/assistant-paket-b-004-20261113/T04-ui-snapshot.md",
+    "output/assistant-paket-b-004-20261113/request-statuses.txt"
+  ],
+  "limits": [
+    "One assistant-operated synthetic-data run; not a human usability trial.",
+    "Assistant had already read the scenario and scoring key; not blinded.",
+    "Both fixes and more efficient automation/navigation may contribute to the shorter observed time.",
+    "Scored accuracy covers the defined facts; no claim of zero remaining bugs."
+  ]
+}

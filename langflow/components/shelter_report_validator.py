@@ -263,6 +263,21 @@ def validate(llm_output: str, source_text: str) -> dict:
                 pass
         stock_evidence = {}
         units = {"air_liter_per_hari": r"(?:liter|l)", "kkal_per_hari": r"kkal", "jamban_unit": r"unit", "ruang_hunian_m2": r"m(?:2|²)"}
+        metric_times = {}
+        labels = {"air_liter_per_hari":r"air", "kkal_per_hari":r"(?:pangan|makanan)",
+                  "jamban_unit":r"jamban", "ruang_hunian_m2":r"(?:ruang\s+)?hunian"}
+        if clean.get('reported_at'):
+            for metric, label in labels.items():
+                for proof in re.finditer(r'\bstok\s+' + label + r'\b([^\n]{0,120}?)\b(?:dicek|cek|diukur|dicatat)\s*(?:jam|pukul)?\s*(\d{1,2})[.:](\d{2})', sources[rid], re.I):
+                    # Only a same-day clock explicitly bound to this stock measurement.
+                    # A different/relative date needs its own complete timestamp.
+                    if re.search(r'\b(?:kemarin|malam|lalu|tanggal)\b|\d{1,2}/\d{1,2}|\d{1,2}\s+(?:januari|februari|maret|april|mei|juni|juli|agustus|september|oktober|november|desember)\b', proof[1], re.I):
+                        continue
+                    try:
+                        value = datetime.fromisoformat(clean['reported_at'][:10]).replace(hour=int(proof[2]), minute=int(proof[3])).strftime('%Y-%m-%d %H:%M')
+                        metric_times.setdefault(metric, {})[value] = proof[0]
+                    except ValueError:
+                        pass
         for key, amount in list(stock.items()):
             if amount is not None:
                 text_amount = str(int(amount)) if float(amount).is_integer() else str(amount)
@@ -298,6 +313,7 @@ def validate(llm_output: str, source_text: str) -> dict:
             if amount is not None:
                 valid_times = {clean["reported_at"]}
                 valid_times.update(source_times)
+                valid_times.update(metric_times.get(key, {}))
                 reported_stock_time = str(context[key].get("recorded_at") or "").replace("T", " ")
                 if reported_stock_time not in valid_times:
                     context[key].pop("recorded_at", None)
