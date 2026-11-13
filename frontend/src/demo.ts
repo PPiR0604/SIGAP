@@ -54,6 +54,7 @@ export type Shelter = {
     water: number | null;
     gap: number | null;
     note: string;
+    reportNotes?: string | null;
     estimate?: boolean;
     changes?: string[];
     sourceBatchId?: string;

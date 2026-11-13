@@ -57,12 +57,11 @@ def _parse_cards(lines: list[str]) -> list[dict] | None:
     headers = [(i, match) for i, match in headers if match]
     if not headers:
         return None
-    # Only consume a recognized date preamble. Preserve arbitrary text preceding
-    # the first heading through the existing plain-text parser instead of losing it.
+    # Keep arbitrary preambles as their own source message. Falling back to the
+    # plain parser would merge every explicitly headed card into a single ID.
     prefix = [line.strip() for line in lines[:headers[0][0]] if line.strip()]
-    declarations = [REFERENCE_DATE.fullmatch(line) for line in prefix]
-    if any(match is None for match in declarations):
-        return None
+    declarations = [match for line in prefix if (match := REFERENCE_DATE.fullmatch(line))]
+    date_lines = [line for line in prefix if REFERENCE_DATE.fullmatch(line)]
     day = None
     if len(declarations) == 1:
         months = 'januari februari maret april mei juni juli agustus september oktober november desember'.split()
@@ -72,6 +71,8 @@ def _parse_cards(lines: list[str]) -> list[dict] | None:
         except ValueError:
             pass
     reports = []
+    if len(date_lines) != len(prefix):
+        reports.append({'timestamp': None, 'sender': None, 'text': '\n'.join(prefix)})
     for index, (start, header) in enumerate(headers):
         stop = headers[index + 1][0] if index + 1 < len(headers) else len(lines)
         clock = header['time']
@@ -82,7 +83,7 @@ def _parse_cards(lines: list[str]) -> list[dict] | None:
         # Retain the original heading and its date declaration as source evidence.
         body = '\n'.join(lines[start:stop]).strip()
         reports.append({'timestamp': timestamp, 'sender': None,
-                        'text': '\n'.join(prefix + [body])})
+                        'text': '\n'.join(date_lines + [body])})
     return reports
 
 SKIP_MESSAGES = (

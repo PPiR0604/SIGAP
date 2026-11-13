@@ -43,7 +43,7 @@ export function previewRows(preview: Preview): Shelter[] {
       name: r.shelter_name || 'Nama belum diketahui', village: r.village || 'Desa belum diketahui',
       people: r.total_people ?? null, male: r.male ?? null, female: r.female ?? null, elderly: r.elderly ?? null, disability: r.disability ?? null,
       toddler:r.infants_toddlers??null, pregnant:r.pregnant??null, totalFamilies:r.total_families??null,children:r.children??null,breastfeeding:r.breastfeeding??null,reportedAt:r.reported_at??null,lastReportedAt:Object.hasOwn(r,'_last_reported_at')?r._last_reported_at:r.reported_at??null,stock:r.stock,stockContext:r.stock_context,provenance:r.field_provenance,
-      subdistrict:r.subdistrict||r.kecamatan||undefined,
+      subdistrict:r.subdistrict||r.kecamatan||undefined, reportNotes:typeof r.notes==='string'?r.notes:null,
       status: needsClarification ? 'Perlu klarifikasi' : hasConflict ? 'Menunggu persetujuan' : missing ? 'Parsial' : 'Siap ditinjau',
       needs: (r.urgent_needs || []).map((n: any) => typeof n === 'string' ? n : n.item || n.name || n.category || 'Kebutuhan perlu diperiksa'),
       time: r.reported_at || 'Waktu belum diketahui', source: [...new Set(source)].join('\n') || 'Rujuk bukti sumber pada hasil validasi server.',

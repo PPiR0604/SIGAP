@@ -37,6 +37,8 @@ Teks tempelan mendukung ekspor WhatsApp, pemisah `---`/dua baris kosong, dan jud
 
 Validator menolak penerbitan kandidat parsial jika ID ekstraksi ganda/tidak sesuai sumber, atau pesan posko dengan jumlah jiwa eksplisit terlewat. Model dapat memperbaiki ekstraksi memakai sumber yang sama; penyimpanan tetap memerlukan tinjauan dan persetujuan petugas. Pesan admin yang bukan laporan boleh dilewati.
 
+Teks tambahan sebelum kartu dipertahankan sebagai pesan sumber tersendiri, sehingga tidak menggabungkan kartu menjadi satu ID. Tanggal acuan hanya digunakan jika deklarasinya jelas dan tunggal; tanggal yang ambigu tetap belum diketahui. Pemeriksaan kelengkapan juga mengenali format berlabel seperti `Jumlah jiwa: 10`.
+
 Sumber komponen berada di `components/` dan helper di `lib/`; export Supabase dibangun oleh `scripts/build_supabase_flows.py`. Setelah perubahan, verifikasi export dan deployment yang dipakai Langflow: mengubah file repo saja tidak otomatis mengubah flow yang sudah diimpor. Jalankan pengujian lokal yang relevan dan uji Playground → MCP → runtime → dialog dengan data sintetis. Test mock bukan bukti provider atau database live berhasil.
 
 Export lokal SQLite dan [panduan migrasinya](SQLITE_MIGRATION.md) dipertahankan sebagai rujukan migrasi, bukan konfigurasi Supabase aktif. Bob ACP memerlukan verifikasi tersendiri; adapter backend pada autentikasi Supabase saat ini fail-closed.

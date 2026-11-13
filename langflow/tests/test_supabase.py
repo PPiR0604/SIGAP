@@ -1,6 +1,7 @@
 import base64
 import copy
 import json
+import re
 import sys
 import types
 import unittest
@@ -19,12 +20,15 @@ def capability(scope='posko-a'):
 class CloudTests(unittest.TestCase):
     def test_incomplete_or_duplicate_extraction_does_not_publish_partial_snapshot(self):
         from test_report_cards import card
-        for mode in ('duplicate', 'missing', 'unknown'):
+        for mode in ('duplicate', 'missing', 'missing_labeled', 'unknown'):
             with self.subTest(mode=mode):
                 ns, storage = self.module('Shelter Report Validator')
                 token = ns['_cloud_capability'].set(capability())
                 try:
-                    source, _ = ns['prepare_source'](card('B', 'T01'))
+                    raw_source = card('B', 'T01')
+                    if mode == 'missing_labeled':
+                        raw_source = re.sub(r'\b(\d+)\s+jiwa\b', r'jumlah jiwa: \1', raw_source)
+                    source, _ = ns['prepare_source'](raw_source)
                     ref = json.loads(source.split('<<<SOURCE_REF>>>')[1].split('<<<END_SOURCE_REF>>>')[0])
                 finally:
                     ns['_cloud_capability'].reset(token)
@@ -33,7 +37,7 @@ class CloudTests(unittest.TestCase):
                             ('R002','Posko Sejahtera','Cibening',32),('R003','Posko Kenanga','Mekarsari',46)]]
                 if mode == 'duplicate':
                     for row in rows: row['report_id'] = 'R001'
-                elif mode == 'missing': rows = rows[:1]
+                elif mode in ('missing', 'missing_labeled'): rows = rows[:1]
                 else: rows[-1]['report_id'] = 'R999'
                 # Saving the immutable source is allowed; publishing an approval snapshot is not.
                 ns['save_candidate_snapshot'] = lambda *_: self.fail('partial candidate published')

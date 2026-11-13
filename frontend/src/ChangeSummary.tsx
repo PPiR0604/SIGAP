@@ -1,12 +1,12 @@
 import type {Shelter} from './demo';
 import {matchesClarificationTarget} from './backendPreview';
 
-const fields: [keyof Shelter,string][]=[['name','Nama posko'],['village','Desa'],['subdistrict','Kecamatan'],['totalFamilies','Jumlah KK'],['children','Anak'],['breastfeeding','Ibu menyusui'],['reportedAt','Waktu laporan'],['stock','Stok'],['stockContext','Waktu dan periode stok'],['people','Jumlah jiwa'],['male','Laki-laki'],['female','Perempuan'],['elderly','Lansia'],['disability','Disabilitas'],['toddler','Balita'],['pregnant','Ibu hamil'],['needs','Kebutuhan dilaporkan']];
+const fields: [keyof Shelter,string][]=[['name','Nama posko'],['village','Desa'],['subdistrict','Kecamatan'],['totalFamilies','Jumlah KK'],['children','Anak'],['breastfeeding','Ibu menyusui'],['reportedAt','Waktu laporan'],['stock','Stok'],['stockContext','Waktu dan periode stok'],['people','Jumlah jiwa'],['male','Laki-laki'],['female','Perempuan'],['elderly','Lansia'],['disability','Disabilitas'],['toddler','Balita'],['pregnant','Ibu hamil'],['needs','Kebutuhan dilaporkan'],['reportNotes','Catatan laporan']];
 const stockLabels:Record<string,[string,string]>={air_liter_per_hari:['Air bersih','L'],kkal_per_hari:['Energi pangan','kkal'],jamban_unit:['Jamban','unit'],ruang_hunian_m2:['Ruang hunian','m²']};
 function format(value:unknown,key?:keyof Shelter):string{
  if(value==null||value==='')return 'Belum diketahui';
  if(Array.isArray(value))return value.join(', ')||'Belum dilaporkan';
- if((key==='stock'||key==='stockContext')&&typeof value==='object')return Object.entries(value).map(([metric,v])=>{
+ if((key==='stock'||key==='stockContext')&&typeof value==='object')return Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([metric,v])=>{
   const [label,unit]=stockLabels[metric]||['Stok lain',''];
   if(key==='stock')return `${label}: ${v==null?'belum diketahui':`${Number(v).toLocaleString('id-ID')} ${unit}`}`;
   const context=v as {recorded_at?:string;horizon_hours?:number}|null;

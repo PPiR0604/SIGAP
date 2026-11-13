@@ -74,7 +74,28 @@ class ReportCardsTests(unittest.TestCase):
 
     def test_unrecognized_preamble_is_not_silently_lost(self):
         raw = 'Posko Awal 12 jiwa.\n\n' + card('B', 'T01')
-        self.assertIn('Posko Awal 12 jiwa.', parse_reports(raw)[0]['text'])
+        reports = parse_reports(raw)
+        self.assertEqual(len(reports), 4)
+        self.assertIn('Posko Awal 12 jiwa.', reports[0]['text'])
+        self.assertNotIn('Karangmulya', reports[0]['text'])
+        self.assertIn('Karangmulya', reports[1]['text'])
+        self.assertNotIn('Cibening', reports[1]['text'])
+
+    def test_extra_preamble_does_not_merge_card_ids_or_invent_reference_date(self):
+        body = ('18.00 — Petugas Posko Uji Sejahtera\nPosko Uji Sejahtera, Desa Uji Utara. Jumlah jiwa: 10.\n\n'
+                '18.02 — Petugas Posko Uji Sejahtera\nPosko Uji Sejahtera, Desa Uji Selatan. Jumlah jiwa: 12.')
+        for prefix, expected_time in (
+            ('Tanggal acuan: 13 November 2026. Data sintetis diagnostik.', None),
+            ('Tanggal acuan: 13 November 2026.\nData sintetis diagnostik.', '2026-11-13 18:00'),
+        ):
+            with self.subTest(prefix=prefix):
+                reports = parse_reports(prefix + '\n\n' + body)
+                self.assertEqual([r['report_id'] for r in reports], ['R001', 'R002', 'R003'])
+                self.assertEqual(reports[0]['text'], prefix)
+                self.assertEqual(reports[1]['timestamp'], expected_time)
+                self.assertIn('Uji Utara', reports[1]['text'])
+                self.assertNotIn('Uji Selatan', reports[1]['text'])
+                self.assertIn('Uji Selatan', reports[2]['text'])
 
     def test_whatsapp_and_plain_separator_formats_still_work(self):
         reports = parse_reports('10/11/2026 08.00 - Petugas: Posko A 10 jiwa.\nBaris lanjutan.\n10/11/2026 08.02 - Petugas: Posko B 12 jiwa.')

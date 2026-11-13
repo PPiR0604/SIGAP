@@ -740,7 +740,7 @@ class ShelterReportValidator(Component):
         represented = {record['report_id'] for record in result['records']}
         missing_reports = [rid for rid, text in sources.items() if rid not in represented
                            and re.search(r'\b(?:posko|pengungsi)\b', text, re.I)
-                           and re.search(r'\b\d+\s*(?:jiwa|pengungsi)\b', text, re.I)]
+                           and re.search(r'\b(?:\d+\s*(?:jiwa|pengungsi)|(?:jumlah\s+|total\s+)?(?:jiwa|pengungsi)\s*[:=]\s*\d+)\b', text, re.I)]
         invalid_ids = [issue for issue in result['issues'] if issue['type'] in ('duplicate_report_id', 'unknown_report_id')]
         if invalid_ids or missing_reports:
             details = []
