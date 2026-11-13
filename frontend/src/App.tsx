@@ -90,6 +90,7 @@ export default function App({ contextId = 'posko-sumedang', operator = 'Operator
   const elapsed = useActivityClock(processing || dispatching);
   const [saveOutcomes, setSaveOutcomes] = useState<Record<string, string>>({});
   const dispatchInFlight = useRef(false);
+  const writeInFlight = useRef('');
   const previewRevision = useRef(0);
   const workspaceRevision = useRef(0);
   const completionRevision = useRef(0);
@@ -184,7 +185,9 @@ export default function App({ contextId = 'posko-sumedang', operator = 'Operator
       },
       // Server menandai operasi selesai. Tanpa ini, indikator "memproses" baru mati setelah jeda diam beberapa detik.
       processing_completed: data => {
-        if (data.batch_id && data.batch_id !== latestBatch.current && data.batch_id !== candidateRef.current && data.batch_id !== clarificationAttempt.current?.batchId) return;
+        if(writeInFlight.current&&data.batch_id!==writeInFlight.current)return;
+        if (data.batch_id && data.batch_id !== writeInFlight.current && data.batch_id !== latestBatch.current && data.batch_id !== candidateRef.current && data.batch_id !== clarificationAttempt.current?.batchId) return;
+        writeInFlight.current='';
         completionRevision.current++; setProcessing(false); setReportInFlight(false); setStage('');
         if (clarificationAttempt.current && (!data.batch_id || data.batch_id === clarificationAttempt.current.batchId)) {
           if (!clarificationAttempt.current.received) failClarification('Belum ada kandidat perubahan yang tervalidasi. Periksa atau kirim ulang klarifikasi.');
@@ -226,26 +229,33 @@ export default function App({ contextId = 'posko-sumedang', operator = 'Operator
       },
       stored_rekap_ready: data => {
         workspaceRevision.current++;
+        const resolved=new Set<string>(data.resolved_review_batch_ids||[]);
+        if(resolved.size){
+          pendingReviewRef.current=pendingReviewRef.current.filter(review=>!resolved.has(review.batchId));
+          for(const id of resolved)submittedReviews.current.delete(id);
+          setPendingReviews(pendingReviewRef.current);
+          if(resolved.has(candidateRef.current))activateReview(pendingReviewRef.current.at(-1)||null);
+        }
         const rows = storedRows(data.records || []);
         storedBase.current = rows;
         setActiveRows(pendingRows(rows, pendingReviewRef.current, rowsRef.current));
         setStoredLoaded(!pendingReviewRef.current.length && rows.length > 0);
         setNotice('Rekap tersimpan dimuat otomatis dari penyimpanan.');
       },
-      approval_required: () => { completionRevision.current++; setProcessing(false); },
+      approval_required: () => { /* The server still has to finish the operation. */ },
       storage_result: data => setNotice(data.simulated ? 'Simulasi write sedang diperiksa.' : 'Data rekap sedang diverifikasi ke penyimpanan...'),
       readback_result: data => {
         if (data.batch_id) setSaveOutcomes(v => ({ ...v, [data.batch_id]: data.verification_status === 'verified' && !data.simulated ? 'Tersimpan dan terverifikasi' : 'Hasil simpan belum terverifikasi' }));
         setActivity('read');
         completionRevision.current++;
         const verified = data.verification_status === 'verified' && !data.simulated;
-        setStorageVerified(verified); setProcessing(false);
+        setStorageVerified(verified); if(!writeInFlight.current)setProcessing(false);
         if (verified && !data.simulated) {
           const persisted = storedRows(data.records || []);
           if (persisted.length) storedBase.current = persisted;
-          const committedBatch = data.batch_id;
-          pendingReviewRef.current = pendingReviewRef.current.filter(review => review.batchId !== committedBatch);
-          submittedReviews.current.delete(committedBatch);
+          const resolved=new Set<string>([data.batch_id,...(data.resolved_review_batch_ids||[])]);
+          pendingReviewRef.current = pendingReviewRef.current.filter(review => !resolved.has(review.batchId));
+          for(const id of resolved)submittedReviews.current.delete(id);
           setPendingReviews(pendingReviewRef.current);
           setActiveRows(pendingRows(storedBase.current, pendingReviewRef.current, rowsRef.current));
           activateReview(pendingReviewRef.current.at(-1) || null);
@@ -274,6 +284,7 @@ export default function App({ contextId = 'posko-sumedang', operator = 'Operator
           if(failed)setDetail(current=>current&&reviewForShelter([failed],current)?rows.find(row=>matchesClarificationTarget(row,current))||null:current);
           if(candidateRef.current===data.batch_id){activateReview(pendingReviewRef.current.at(-1)||null);setModal(null);}
         }
+        if(!data.batch_id||data.batch_id===writeInFlight.current)writeInFlight.current='';
         markSaveUnverified(data.batch_id);completionRevision.current++;setProcessing(false);
         const message=data.message||'Proses belum dapat diverifikasi.';setOperationError(message);failClarification(message,data.batch_id);
       }
@@ -545,6 +556,7 @@ export default function App({ contextId = 'posko-sumedang', operator = 'Operator
 
         const previousCompletionRevision = completionRevision.current;
         submittedReviews.current.add(candidateBatchId);
+        writeInFlight.current=candidateBatchId;
         setSaveOutcomes(v => ({ ...v, [candidateBatchId]: 'Menyimpan' }));
         dispatchInFlight.current = true; setDispatching(true); setProcessing(true); setActivity('report');
         lastEvent.current = { type: 'sent', at: Date.now() };
@@ -568,10 +580,12 @@ export default function App({ contextId = 'posko-sumedang', operator = 'Operator
         setNotice('Simulasi persetujuan tercatat. Data belum disimpan ke backend.');
       }
     } catch (e) {
-      const rejected = e instanceof HttpResponseError && [400, 401, 403, 404, 422].includes(e.status);
+      const rejected = e instanceof HttpResponseError && ([400, 401, 403, 404, 422].includes(e.status)
+        || e.status===409&&['PROCESSING_IN_PROGRESS','SNAPSHOT_SUPERSEDED','SNAPSHOT_EXPIRED'].includes(e.code||''));
       const unknown = dispatched && !rejected;
       if (!unknown) submittedReviews.current.delete(candidateBatchId);
       if (dispatched) { setSaveSubmitted(unknown); setSaveOutcomes(v => ({ ...v, [candidateBatchId]: unknown ? 'Hasil simpan belum terverifikasi' : 'Menunggu persetujuan' })); }
+      if(rejected)writeInFlight.current='';
       if (dispatchInFlight.current) setProcessing(false);
       setError(unknown ? 'Hasil simpan belum diketahui. Periksa rekap tersimpan sebelum mengirim ulang.' : (e as Error).message);
     } finally {

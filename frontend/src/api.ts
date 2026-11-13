@@ -60,11 +60,11 @@ function acceptSession(session:AuthSession){
   try{sessionStorage.setItem(authKey,JSON.stringify(session));localStorage.removeItem('sigap_token');}catch{}
   return session;
 }
-export class HttpResponseError extends Error {constructor(message:string,public status:number){super(message);this.name='HttpResponseError';}}
+export class HttpResponseError extends Error {constructor(message:string,public status:number,public code?:string){super(message);this.name='HttpResponseError';}}
 async function parseResponse(res:Response):Promise<any>{
   if(res.status===204)return null;
   const body=await res.json().catch(()=>({}));
-  if(!res.ok){const code=body?.error?.code;const messages:Record<string,string>={UNAUTHORIZED:'Sesi berakhir. Silakan masuk kembali.',SESSION_REVOKED:'Sesi dicabut. Silakan masuk kembali.',ACCOUNT_INACTIVE:'Akun belum aktif. Hubungi admin.',SCOPE_DENIED:'Anda belum ditugaskan ke pos komando ini.',READ_ONLY_ROLE:'Akun ini hanya dapat membaca publikasi.',RATE_LIMITED:'Terlalu banyak percobaan. Tunggu sebentar.'};throw new HttpResponseError(messages[code]||body?.error?.message||`Permintaan gagal (${res.status}${code?`: ${code}`:''}).`,res.status);}
+  if(!res.ok){const code=body?.error?.code;const messages:Record<string,string>={UNAUTHORIZED:'Sesi berakhir. Silakan masuk kembali.',SESSION_REVOKED:'Sesi dicabut. Silakan masuk kembali.',ACCOUNT_INACTIVE:'Akun belum aktif. Hubungi admin.',SCOPE_DENIED:'Anda belum ditugaskan ke pos komando ini.',READ_ONLY_ROLE:'Akun ini hanya dapat membaca publikasi.',RATE_LIMITED:'Terlalu banyak percobaan. Tunggu sebentar.'};throw new HttpResponseError(messages[code]||body?.error?.message||`Permintaan gagal (${res.status}${code?`: ${code}`:''}).`,res.status,typeof code==='string'?code:undefined);}
   return body;
 }
 export async function login(email:string,password:string):Promise<AuthSession>{return acceptSession(await parseResponse(await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})})));}

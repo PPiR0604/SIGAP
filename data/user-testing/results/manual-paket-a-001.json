@@ -1,0 +1,65 @@
+{
+  "record_id": "manual-paket-a-001",
+  "evidence_kind": "user_reported_human_test_result",
+  "reported_on": "2026-11-13",
+  "test_date": null,
+  "participant_code": null,
+  "participant_background": null,
+  "method": "paper",
+  "package": "A",
+  "scenario_data_kind": "synthetic",
+  "duration": {
+    "raw": "15:01:40",
+    "format_confirmed_by_user": "minutes:seconds:centiseconds",
+    "minutes": 15,
+    "seconds": 1.4,
+    "total_seconds": 901.4,
+    "scope_confirmed_by_user": ["T01", "T02", "T03", "T04"],
+    "excluded_tasks": ["T05"],
+    "scope_correction": "User corrected the earlier full-package confirmation: the session stopped after answering questions and did not include the handover/bulletin task."
+  },
+  "reported_error_count": 2,
+  "errors": [
+    {
+      "task": "T01",
+      "shelter_name": "Posko Harapan",
+      "village": "Sukamaju",
+      "field": "female",
+      "reported_answer": 20,
+      "expected_answer": 22,
+      "category": "transcription_error",
+      "verified_against": "data/synthetic/comparison-paper-sigap/PAKET-A.md"
+    },
+    {
+      "task": "T04",
+      "question": 5,
+      "task_mapping": "Matched to question 5 in Paket A; user called it pertanyaan 5.",
+      "shelter_name": "Posko Melati",
+      "village": "Sukaasih",
+      "reported_answer_description": "Menulis kebutuhan 750 liter/hari",
+      "reported_water_need_l_per_day": 750,
+      "expected_final_population": 52,
+      "expected_water_need_l_per_day": 780,
+      "expected_water_gap_l_per_day": null,
+      "expected_answer": "Kekurangan air belum dapat ditentukan karena stok belum diketahui.",
+      "category": "answer_not_matching_final_reference_and_question",
+      "verified_against": "data/synthetic/comparison-paper-sigap/KUNCI-JAWABAN.md"
+    }
+  ],
+  "primary_scoring": {
+    "protocol_item_counts": {"T01": 18, "T02": 9, "T03": 10, "T04": 6, "T05": 6},
+    "protocol_total_items": 49,
+    "applicable_tasks": ["T01", "T02", "T03", "T04"],
+    "applicable_item_count": 43,
+    "verified_correct_items": null,
+    "accuracy_percent": null,
+    "reason": "Only the two reported errors have been matched against the key; a complete item-level answer sheet has not been reviewed. Do not infer that all other items are correct."
+  },
+  "completion": "T01-T04 submitted with two reported errors; T05 excluded; not a verified error-free completion time",
+  "assistance": null,
+  "technical_disruption_seconds": null,
+  "per_task_duration_seconds": null,
+  "paired_sigap_result": null,
+  "time_saving_percent": null,
+  "provenance": "User supplied the duration and two errors, confirmed stopwatch format, then corrected task scope to T01-T04 only. Assistant checked the supplied errors against the local package/key. No answer-sheet image or recording was reviewed."
+}

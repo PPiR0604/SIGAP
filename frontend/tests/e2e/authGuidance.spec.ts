@@ -1,5 +1,21 @@
 import {test,expect} from '@playwright/test';
 
+test('reload retains the selected assigned operation for the signed-in user',async({page})=>{
+  const profile={user_id:'context-user',organization_id:'context-org',display_name:'Petugas Uji',role:'petugas',status:'active',scopes:['demo','trial']};
+  const session={access_token:'synthetic-access',refresh_token:'synthetic-refresh',expires_in:3600,profile};
+  await page.route('**/api/auth/login',r=>r.fulfill({json:session}));
+  await page.route('**/api/auth/me',r=>r.fulfill({json:{profile}}));
+  await page.route('**/api/contexts',r=>r.fulfill({json:[{context_id:'demo',name:'Posko Demo'},{context_id:'trial',name:'Ruang Uji'}]}));
+  await page.route('**/api/sessions',r=>r.fulfill({status:503,json:{error:{code:'TEST_NOT_RUNNING',message:'Sesi workflow tidak dijalankan pada uji preferensi.'}}}));
+  await page.getByLabel('Email',{exact:true}).fill('petugas@example.test');
+  await page.getByLabel('Kata sandi',{exact:true}).fill('Uji12345');
+  await page.getByRole('button',{name:'Masuk',exact:true}).click();
+  await expect(page.getByLabel('Pos komando aktif')).toHaveValue('demo');
+  await page.getByLabel('Pos komando aktif').selectOption('trial');
+  await page.reload();
+  await expect(page.getByLabel('Pos komando aktif')).toHaveValue('trial');
+});
+
 test.beforeEach(async({page})=>{
   await page.route(/^https:\/\/fonts\.(googleapis|gstatic)\.com\//,r=>r.abort());
   await page.route('**/api/health',r=>r.fulfill({json:{status:'ok',backend:'ready',mode:'live',agent:'openai'}}));

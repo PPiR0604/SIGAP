@@ -120,9 +120,8 @@ export function ClarificationForm({ shelter, busy, connected, feedback, onSubmit
     if (!changes.length) { setError('Ubah setidaknya satu data atau tulis catatan klarifikasi.'); return; }
     setError('');setErrorField('');
     if(offline&&(!draft.name.trim()||!draft.village.trim())){setSection('data');setError('Isi nama posko dan desa agar laporan dapat dikenali.');return;}
-    if(offline&&note.trim())expected.note=note.trim();
+    if(note.trim())expected.note=note.trim();
     const structured=Object.keys(expected).length>0;
-    if(structured&&note.trim())expected.note=note.trim();
     await onSubmit({...shelter,calculationKey:baseKey||shelter.calculationKey}, changes.join('.\n') + '.', expected,structured);
   }
 

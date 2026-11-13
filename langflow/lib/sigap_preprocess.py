@@ -32,6 +32,59 @@ WA_LINE = re.compile(
 )
 SENDER_SPLIT = re.compile(r"^(?P<sender>[^:]{1,60}?):\s(?P<msg>.*)$")
 
+# Pasted report cards also have explicit message boundaries. A blank line within
+# one message is not a boundary, and an inline stock measurement is not a header.
+CARD_HEADER = re.compile(
+    r"^(?:(?P<time>\d{1,2}[.:]\d{2})\s*[—–-]\s*[^\n]*\bposko\b[^\n]*|"
+    r"pesan yang diteruskan ulang\s*[—–-]\s*[^\n]+)$", re.I
+)
+REFERENCE_DATE = re.compile(
+    r"^Tanggal acuan(?: seluruh laporan)?\s*:\s*(\d{1,2})\s+"
+    r"(Januari|Februari|Maret|April|Mei|Juni|Juli|Agustus|September|Oktober|November|Desember)"
+    r"\s+(\d{4})(?:\s*,?\s*WIB)?\.?$", re.I
+)
+
+
+def _card_heading(line: str):
+    heading = re.sub(r"^#{1,6}\s+", "", line.strip())
+    if heading.startswith('**') and heading.endswith('**'):
+        heading = heading[2:-2].strip()
+    return CARD_HEADER.fullmatch(heading)
+
+
+def _parse_cards(lines: list[str]) -> list[dict] | None:
+    headers = [(i, _card_heading(line)) for i, line in enumerate(lines)]
+    headers = [(i, match) for i, match in headers if match]
+    if not headers:
+        return None
+    # Only consume a recognized date preamble. Preserve arbitrary text preceding
+    # the first heading through the existing plain-text parser instead of losing it.
+    prefix = [line.strip() for line in lines[:headers[0][0]] if line.strip()]
+    declarations = [REFERENCE_DATE.fullmatch(line) for line in prefix]
+    if any(match is None for match in declarations):
+        return None
+    day = None
+    if len(declarations) == 1:
+        months = 'januari februari maret april mei juni juli agustus september oktober november desember'.split()
+        match = declarations[0]
+        try:
+            day = datetime(int(match[3]), months.index(match[2].lower()) + 1, int(match[1]))
+        except ValueError:
+            pass
+    reports = []
+    for index, (start, header) in enumerate(headers):
+        stop = headers[index + 1][0] if index + 1 < len(headers) else len(lines)
+        clock = header['time']
+        if not clock:
+            original = re.search(r'\basli\s+pukul\s+(\d{1,2}[.:]\d{2})\b', header[0], re.I)
+            clock = original[1] if original else None
+        timestamp = _parse_datetime(day.strftime('%d/%m/%Y'), clock) if day and clock else None
+        # Retain the original heading and its date declaration as source evidence.
+        body = '\n'.join(lines[start:stop]).strip()
+        reports.append({'timestamp': timestamp, 'sender': None,
+                        'text': '\n'.join(prefix + [body])})
+    return reports
+
 SKIP_MESSAGES = (
     "<media omitted>",
     "<media tidak disertakan>",
@@ -78,7 +131,8 @@ def parse_reports(raw_text: str, date_order: str = "DMY") -> list[dict]:
     """Pisahkan teks menjadi laporan.
 
     - Jika teks berformat ekspor WhatsApp: satu pesan = satu laporan, lengkap dengan waktu & pengirim.
-    - Jika teks tempelan biasa: laporan dipisah baris kosong ganda atau garis '---'.
+    - Kartu berjudul jam — posko: satu judul = satu laporan, dengan tanggal acuan eksplisit bila tersedia.
+    - Jika teks tempelan biasa: laporan dipisah dua baris kosong atau garis '---'.
     """
     lines = raw_text.replace("\r\n", "\n").split("\n")
     wa_hits = sum(1 for ln in lines if WA_LINE.match(ln.strip()))
@@ -103,8 +157,10 @@ def parse_reports(raw_text: str, date_order: str = "DMY") -> list[dict]:
                 current["text"] += "\n" + line.strip()
         reports = [r for r in reports if r["text"].strip().lower() not in SKIP_MESSAGES]
     else:
-        chunks = re.split(r"\n\s*-{3,}\s*\n|\n\s*\n\s*\n", raw_text.strip())
-        reports = [{"timestamp": None, "sender": None, "text": c.strip()} for c in chunks if c.strip()]
+        reports = _parse_cards(lines)
+        if reports is None:
+            chunks = re.split(r"\n\s*-{3,}\s*\n|\n\s*\n\s*\n", raw_text.strip())
+            reports = [{"timestamp": None, "sender": None, "text": c.strip()} for c in chunks if c.strip()]
 
     for i, r in enumerate(reports, start=1):
         r["report_id"] = f"R{i:03d}"

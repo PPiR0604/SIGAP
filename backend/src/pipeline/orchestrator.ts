@@ -23,8 +23,22 @@ import {splitRowSnapshots} from './rowDrafts.js';
 import {mapConcurrent,type WorkspaceState} from '../db/workspace.js';
 import {storageReaderInput} from './readerInput.js';
 import {analysisToolName,AnalysisRequest} from './analysisTool.js';
+import {reviewAlreadyStored} from './resolvedReviews.js';
 
 export class BatchOrchestrator extends EventEmitter {
+  private async resolveStoredReviews(sessionId:string,records:any[],replacementSnapshot:string):Promise<string[]> {
+    const resolved:string[]=[];
+    try{
+      for(const snapshot of await this.repo.getReviewSnapshots(sessionId)){
+        const candidate=JSON.parse(snapshot.payload_json).records;
+        if(Array.isArray(candidate)&&reviewAlreadyStored(candidate,records)){
+          await this.repo.supersedeSnapshot(snapshot.snapshot_id,replacementSnapshot);
+          resolved.push(snapshot.batch_id);
+        }
+      }
+    }catch(error){logger.warn('Rekap terbaca; penyelarasan draf perlu dicoba ulang',error);}
+    return resolved;
+  }
   auth?:AuthService;
   private principals=new Map<string,Principal>();
   private jobs=new Set<Promise<void>>();
@@ -333,9 +347,11 @@ export class BatchOrchestrator extends EventEmitter {
               // Pembacaan rekap tersimpan (mis. pesan pertama sesi). Isinya dikirim ke UI sebagai rekap
               // tersimpan, tanpa membuat kandidat, snapshot, atau persetujuan.
               const stored = Array.isArray(parsed.records) ? parsed.records : [];
+              const resolved=parsed.snapshot_id&&stored.length&&!simulated
+                ?await this.resolveStoredReviews(options.sessionId,stored,parsed.snapshot_id):[];
               event = stored.length
                 ? { ...event, event_type: 'stored_rekap_ready', payload: { records: stored, total_shelters: parsed.total_shelters ?? stored.length,
-                    source: parsed.source, detail: 'Data tersimpan terbaca; bukan verifikasi write baru.' } }
+                    source: parsed.source, resolved_review_batch_ids:resolved, detail: 'Data tersimpan terbaca; bukan verifikasi write baru.' } }
                 : { ...event, event_type: 'stage_changed', payload: { stage: 'storage_read', detail: 'Data tersimpan terbaca; bukan verifikasi write baru.' } };
               break;
             }
@@ -346,7 +362,9 @@ export class BatchOrchestrator extends EventEmitter {
             if (parsed.verification_status && parsed.verification?.status && parsed.verification_status !== parsed.verification.status) throw new Error('Status verifikasi bertentangan.');
             (await this.repo.updateBatchStatus(batch.batch_id, status === 'verified' ? simulated ? 'simulated_done' : 'done' : 'needs_review'));
             if(status==='verified'&&parsed.snapshot_id&&parsed.snapshot_sha256&&parsed.records?.length)verifiedRekap={snapshot_id:parsed.snapshot_id,snapshot_sha256:parsed.snapshot_sha256,records:parsed.records,kind:'stored'};
-            event = { ...event, payload: { ...parsed, verification_status: status, simulated } };
+            const resolved=status==='verified'&&!simulated&&parsed.snapshot_id&&parsed.records?.length
+              ?await this.resolveStoredReviews(options.sessionId,parsed.records,parsed.snapshot_id):[];
+            event = { ...event, payload: { ...parsed, verification_status: status, resolved_review_batch_ids:resolved, simulated } };
             terminalEvent = true; break;
           }
           case 'calculation_ready': {
@@ -424,7 +442,9 @@ export class BatchOrchestrator extends EventEmitter {
             calculated.set(ref.snapshot_id,await this.calculateSnapshot(options.sessionId,ref));
           });
           const result=await calculateAllNeeds(scopes,reference=>Promise.resolve(calculated.get(reference.snapshot_id)!));
-          (await this.publish(createEvent(options.sessionId,'stored_rekap_ready',{records:stored.records||[],total_shelters:stored.records?.length||0,source:stored.source},{batchId:options.batchId,requestId:options.requestId})));
+          const resolved=stored.snapshot_id&&stored.records?.length
+            ?await this.resolveStoredReviews(options.sessionId,stored.records,stored.snapshot_id):[];
+          (await this.publish(createEvent(options.sessionId,'stored_rekap_ready',{records:stored.records||[],total_shelters:stored.records?.length||0,source:stored.source,resolved_review_batch_ids:resolved},{batchId:options.batchId,requestId:options.requestId})));
           (await onEvent(createEvent(options.sessionId,'calculation_ready',{rawOutput:JSON.stringify(result)},{batchId:options.batchId,requestId:options.requestId})));
           await eventQueue;
           if(invalid)throw new Error('Hasil analisis tidak dapat divalidasi.');

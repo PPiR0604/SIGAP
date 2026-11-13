@@ -9,6 +9,7 @@ import { authenticatedRequest, checkBackendHealth, clearAuthSession, ensureSessi
 import { consumeVerificationReturn, consumeRecoveryReturn } from './verificationReturn';
 import { PasswordRecovery } from './PasswordRecovery';
 import {OfflinePage} from './OfflineReports';
+import {preferredContext,rememberContext} from './contextPreference';
 
 type Context = { context_id: string; name: string };
 type AuthMode = 'login' | 'register';
@@ -35,7 +36,7 @@ export function AuthGate() {
   function changeMode(next: AuthMode) { setMode(next); setError(''); setMessage(''); setPassword(''); setShowPassword(false); setTouched({}); }
   async function loadProfile(p: AuthProfile) {
     if (p.status === 'active' && p.role && p.role !== 'viewer') {
-      try { const available: Context[] = await authenticatedRequest('/api/contexts'); setContexts(available); setContext(available[0]?.context_id || ''); }
+      try { const available: Context[] = await authenticatedRequest('/api/contexts'); setContexts(available); const selected=preferredContext(p.user_id,p.organization_id,available); setContext(selected); rememberContext(p.user_id,p.organization_id,selected); }
       catch (error) { setContexts([]); setContext(''); setProfile(p); throw error; }
     } else { setContexts([]); setContext(''); }
     setProfile(p);
@@ -75,7 +76,7 @@ export function AuthGate() {
   if (loading) return <main className="auth-page"><p role="status">Memeriksa koneksi dan sesi…</p></main>;
   if (mock) return <App />;
   if (offline) return <><div className="offline-banner" role="status">Backend belum terhubung. Laporan belum diproses model. <ActionButton className="button secondary" onClick={() => location.reload()}>Coba koneksi lagi</ActionButton></div><OfflinePage /></>;
-  if (profile?.status === 'active' && profile.role && profile.role !== 'viewer' && (context || profile.role === 'admin')) return <><div className="context-bar"><label>Pos komando <select aria-label="Pos komando aktif" value={context} disabled={!contexts.length} onChange={e => setContext(e.target.value)}>{contexts.map(c => <option key={c.context_id} value={c.context_id}>{c.name}</option>)}</select></label>{profile.role === 'admin' && <ActionButton className="button secondary" aria-pressed={managementOpen || !context} onClick={() => setManagementOpen(v => !v)}>{managementOpen && context ? 'Kembali ke laporan' : 'Kelola ruang kerja'}</ActionButton>}{(!context || managementOpen) && <ActionButton className="button quiet" onClick={() => void signOut()}>Keluar</ActionButton>}</div>{profile.role === 'admin' && (!context || managementOpen) && <AccessManagement profile={profile} onContextsChange={available => { if (!context) setManagementOpen(true); setContexts(available); setContext(previous => available.some(c => c.context_id === previous) ? previous : available[0]?.context_id || ''); }} />}{context && <div hidden={managementOpen}><App key={`${profile.user_id}:${context}`} preferenceKey={profile.user_id} role={profile.role} contextId={context} operator={profile.display_name || 'Operator'} onLogout={() => void signOut()} /></div>}</>;
+  if (profile?.status === 'active' && profile.role && profile.role !== 'viewer' && (context || profile.role === 'admin')) return <><div className="context-bar"><label>Pos komando <select aria-label="Pos komando aktif" value={context} disabled={!contexts.length} onChange={e => { rememberContext(profile.user_id,profile.organization_id,e.target.value); setContext(e.target.value); }}>{contexts.map(c => <option key={c.context_id} value={c.context_id}>{c.name}</option>)}</select></label>{profile.role === 'admin' && <ActionButton className="button secondary" aria-pressed={managementOpen || !context} onClick={() => setManagementOpen(v => !v)}>{managementOpen && context ? 'Kembali ke laporan' : 'Kelola ruang kerja'}</ActionButton>}{(!context || managementOpen) && <ActionButton className="button quiet" onClick={() => void signOut()}>Keluar</ActionButton>}</div>{profile.role === 'admin' && (!context || managementOpen) && <AccessManagement profile={profile} onContextsChange={available => { if (!context) setManagementOpen(true); setContexts(available); const preferred=preferredContext(profile.user_id,profile.organization_id,available); setContext(previous => available.some(c => c.context_id === previous) ? previous : preferred); }} />}{context && <div hidden={managementOpen}><App key={`${profile.user_id}:${context}`} preferenceKey={profile.user_id} role={profile.role} contextId={context} operator={profile.display_name || 'Operator'} onLogout={() => void signOut()} /></div>}</>;
 
   return <main className="auth-page"><section className="card auth-card" aria-labelledby="auth-title">
     <div className="auth-main">

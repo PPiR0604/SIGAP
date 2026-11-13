@@ -17,6 +17,76 @@ def capability(scope='posko-a'):
     return base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip('=')+'.server-signature'
 
 class CloudTests(unittest.TestCase):
+    def test_incomplete_or_duplicate_extraction_does_not_publish_partial_snapshot(self):
+        from test_report_cards import card
+        for mode in ('duplicate', 'missing', 'unknown'):
+            with self.subTest(mode=mode):
+                ns, storage = self.module('Shelter Report Validator')
+                token = ns['_cloud_capability'].set(capability())
+                try:
+                    source, _ = ns['prepare_source'](card('B', 'T01'))
+                    ref = json.loads(source.split('<<<SOURCE_REF>>>')[1].split('<<<END_SOURCE_REF>>>')[0])
+                finally:
+                    ns['_cloud_capability'].reset(token)
+                rows = [{'report_id':rid, 'shelter_name':name, 'village':village, 'total_people':people}
+                        for rid, name, village, people in [('R001','Posko Sejahtera','Karangmulya',44),
+                            ('R002','Posko Sejahtera','Cibening',32),('R003','Posko Kenanga','Mekarsari',46)]]
+                if mode == 'duplicate':
+                    for row in rows: row['report_id'] = 'R001'
+                elif mode == 'missing': rows = rows[:1]
+                else: rows[-1]['report_id'] = 'R999'
+                # Saving the immutable source is allowed; publishing an approval snapshot is not.
+                ns['save_candidate_snapshot'] = lambda *_: self.fail('partial candidate published')
+                raw = json.dumps({**ref, 'records':rows})
+                result = ns['ShelterReportValidator'](payload=raw,
+                    sigap_context=json.dumps({'__sigap_context':capability(),'input':raw})).build_validated().text
+                self.assertTrue(result.startswith('GAGAL: Ekstraksi laporan belum lengkap'), result)
+                self.assertNotIn('SIGAP_REFERENCE', result)
+                self.assertEqual(storage, {})
+
+    def test_complete_card_extraction_preserves_zero_unknown_and_source_times(self):
+        from test_report_cards import card
+        ns, storage = self.module('Shelter Report Validator')
+        token = ns['_cloud_capability'].set(capability())
+        try:
+            source, _ = ns['prepare_source'](card('B', 'T01'))
+            ref = json.loads(source.split('<<<SOURCE_REF>>>')[1].split('<<<END_SOURCE_REF>>>')[0])
+        finally:
+            ns['_cloud_capability'].reset(token)
+        rows = []
+        for rid, village, people, male, female, water, clock in [('R001','Karangmulya',44,20,24,360,'08:00'),
+                ('R002','Cibening',32,15,17,0,'08:02'),('R003','Mekarsari',46,None,None,None,'08:04')]:
+            rows.append({'report_id':rid,'shelter_name':'Posko Kenanga' if rid == 'R003' else 'Posko Sejahtera',
+                'village':village,'total_people':people,'male':male,'female':female,
+                'stock':{'air_liter_per_hari':water},'stock_context':{'air_liter_per_hari':
+                    {'unit':'L','recorded_at':'2026-11-10 '+clock,'horizon_hours':24} if water is not None else {}}})
+        raw = json.dumps({**ref,'records':rows})
+        result = ns['ShelterReportValidator'](payload=raw,
+            sigap_context=json.dumps({'__sigap_context':capability(),'input':raw})).build_validated().text
+        self.assertFalse(result.startswith('GAGAL:'), result)
+        parsed = json.loads(result.split('```json\n')[-1].split('\n```')[0])
+        self.assertEqual(len(parsed['snapshot_records']), 3)
+        self.assertEqual(sum(r['total_people'] for r in parsed['snapshot_records']), 122)
+        self.assertEqual([r['stock']['air_liter_per_hari'] for r in parsed['snapshot_records']], [360,0,None])
+        self.assertEqual(parsed['snapshot_records'][1]['stock_context']['air_liter_per_hari']['recorded_at'], '2026-11-10 08:02')
+        self.assertEqual(storage, {})
+
+    def test_omitting_non_report_chat_does_not_block_valid_shelter_candidate(self):
+        ns, storage = self.module('Shelter Report Validator')
+        token = ns['_cloud_capability'].set(capability())
+        try:
+            source, _ = ns['prepare_source']('10/11/2026 08.00 - Petugas: Posko Uji 10 jiwa.\n'
+                                             '10/11/2026 08.01 - Admin: Terima kasih, laporan diterima.')
+            ref = json.loads(source.split('<<<SOURCE_REF>>>')[1].split('<<<END_SOURCE_REF>>>')[0])
+        finally:
+            ns['_cloud_capability'].reset(token)
+        raw = json.dumps({**ref,'records':[{'report_id':'R001','shelter_name':'Posko Uji','total_people':10}]})
+        result = ns['ShelterReportValidator'](payload=raw,
+            sigap_context=json.dumps({'__sigap_context':capability(),'input':raw})).build_validated().text
+        self.assertIn('SIGAP_REFERENCE', result)
+        self.assertNotIn('GAGAL:', result)
+        self.assertEqual(storage, {})
+
     def test_compact_reader_preserves_complete_metadata_and_human_default(self):
         ns,_=self.module('Logistics Storage Reader')
         rows=[{'report_id':'R001','shelter_name':'Posko Uji','total_people':0,

@@ -733,6 +733,23 @@ class ShelterReportValidator(Component):
         except (ValueError, OSError, KeyError) as exc:
             return Message(text=f"GAGAL: sumber validasi tidak tersedia/terverifikasi ({exc}). Jalankan prepare_needs ulang; jangan menghitung/write dari JSON bebas.")
         result = validate(llm_output, source_text)
+        # Never issue an approvable partial snapshot when extraction reused an ID
+        # or omitted a source message containing explicit shelter population data.
+        # Non-report chat (e.g. admin acknowledgements) may still be omitted.
+        sources = split_source(source_text)
+        represented = {record['report_id'] for record in result['records']}
+        missing_reports = [rid for rid, text in sources.items() if rid not in represented
+                           and re.search(r'\b(?:posko|pengungsi)\b', text, re.I)
+                           and re.search(r'\b\d+\s*(?:jiwa|pengungsi)\b', text, re.I)]
+        invalid_ids = [issue for issue in result['issues'] if issue['type'] in ('duplicate_report_id', 'unknown_report_id')]
+        if invalid_ids or missing_reports:
+            details = []
+            if invalid_ids:
+                details.append('ID laporan duplikat/tidak sesuai sumber: ' + ', '.join(str(i.get('report_id')) for i in invalid_ids))
+            if missing_reports:
+                details.append('laporan posko belum diekstrak: ' + ', '.join(missing_reports))
+            return Message(text='GAGAL: Ekstraksi laporan belum lengkap (' + '; '.join(details)
+                           + '). Perbaiki records dari seluruh laporan bersih dengan ID sumber masing-masing. Belum ada kandidat atau data tersimpan.')
         for record in result["records"]:
             record["batch_id"] = reference["batch_id"]
         result["snapshot_records"] = build_snapshots(result["records"], split_source(source_text))
